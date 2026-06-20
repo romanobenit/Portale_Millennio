@@ -253,7 +253,7 @@ async def test_segna_fallito_rimborsa_e_rilascia():
         _all_tuples_result([(link_mock, slot_mock)]),  # JOIN link+slot FOR UPDATE
     ])
 
-    with patch("tasks.mint.AsyncSessionLocal", return_value=_session_cm(db)), \
+    with patch("tasks.mint.WorkerSessionLocal", return_value=_session_cm(db)), \
          patch("tasks.mint.asyncio.to_thread", new_callable=AsyncMock) as mock_refund:
         await _segna_fallito(acquisto_id)
 
@@ -299,7 +299,7 @@ async def test_run_mint_idempotente_salta_se_gia_mintato():
         _scalar_one_result(_fake_wallet()),         # wallet
     ])
 
-    with patch("tasks.mint.AsyncSessionLocal", return_value=_session_cm(db)), \
+    with patch("tasks.mint.WorkerSessionLocal", return_value=_session_cm(db)), \
          patch("tasks.mint.genera_ical_content", return_value="ICAL"), \
          patch("tasks.mint.calcola_sha256", return_value="hash"), \
          patch("tasks.mint.costruisci_metadati_nft", return_value={}), \

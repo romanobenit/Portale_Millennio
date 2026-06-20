@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from core.celery_app import celery_app
 from core.config import get_settings
-from core.database import AsyncSessionLocal
+from core.database import WorkerSessionLocal
 from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
 from models.slot_calendario import SlotCalendario
 from models.tessera import Tessera
@@ -35,7 +35,7 @@ stripe.api_key = settings.stripe_secret_key
 
 async def _run_mint(acquisto_id: UUID) -> None:
     """Core async: genera iCal, carica IPFS, minta NFT, aggiorna DB."""
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         try:
             result = await db.execute(select(AcquistoNFT).where(AcquistoNFT.id == acquisto_id))
             acquisto = result.scalar_one()
@@ -176,7 +176,7 @@ async def _segna_fallito(acquisto_id: UUID) -> None:
     Rimborsa il socio (idempotente), rilascia le ore claimate alla conferma del
     pagamento e libera gli slot così possono essere rivenduti.
     """
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         try:
             acquisto = (await db.execute(
                 select(AcquistoNFT).where(AcquistoNFT.id == acquisto_id)

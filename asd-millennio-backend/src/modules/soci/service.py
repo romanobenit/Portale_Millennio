@@ -223,8 +223,11 @@ class SociService:
         importati, errori = 0, []
         for i, row in enumerate(reader, start=2):
             try:
-                data = SocioCreate(**row)
-                await self.crea_socio(data)
+                # Savepoint per riga: un errore (es. IntegrityError) annulla SOLO
+                # questa riga senza invalidare l'intera transazione di import.
+                async with self.db.begin_nested():
+                    data = SocioCreate(**row)
+                    await self.crea_socio(data)
                 importati += 1
             except HTTPException as e:
                 errori.append({"riga": i, "errore": e.detail})

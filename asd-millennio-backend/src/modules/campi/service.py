@@ -152,7 +152,15 @@ class CampiService:
         data: date,
     ) -> CheckoutCampoResponse:
         await self._verifica_tessera(socio_id)
-        tmpl = await self._get_template(template_id)
+        # Lock del template: serializza le prenotazioni concorrenti per lo stesso
+        # template, evitando che due richieste assegnino lo stesso campo (race).
+        tmpl = (await self.db.execute(
+            select(SlotTemplateCampo)
+            .where(SlotTemplateCampo.id == template_id)
+            .with_for_update()
+        )).scalar_one_or_none()
+        if not tmpl:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Template non trovato")
 
         if not tmpl.attivo:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Template non attivo")
