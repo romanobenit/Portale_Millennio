@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -76,15 +77,27 @@ class DirigenzaService:
         engine = PricingEngine(self.db)
         info = await engine.calcola_prezzo_ora(req.fascia, data_slot)
 
-        # Calcola % libere effettiva
+        # Calcola % libere effettiva sul MESE dello slot (coerente con il pricing)
+        primo = date(data_slot.year, data_slot.month, 1)
+        ultimo = date(data_slot.year, data_slot.month, monthrange(data_slot.year, data_slot.month)[1])
         result = await self.db.execute(
             select(func.sum(SlotCalendario.ore_totali)).where(
-                SlotCalendario.fascia == req.fascia
+                and_(
+                    SlotCalendario.fascia == req.fascia,
+                    SlotCalendario.data >= primo,
+                    SlotCalendario.data <= ultimo,
+                )
             )
         )
         ore_tot = int(result.scalar() or 0)
         result2 = await self.db.execute(
-            select(SlotCalendario.ore_vendute).where(SlotCalendario.fascia == req.fascia)
+            select(SlotCalendario.ore_vendute).where(
+                and_(
+                    SlotCalendario.fascia == req.fascia,
+                    SlotCalendario.data >= primo,
+                    SlotCalendario.data <= ultimo,
+                )
+            )
         )
         ore_vend = sum(len(r.ore_vendute or []) for r in result2)
         pct_libere = ((ore_tot - ore_vend) / ore_tot * 100) if ore_tot else None
