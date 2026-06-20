@@ -1,0 +1,43 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd asd-millennio-frontend
+          npm install
+
+      - name: Lint
+        run: |
+          cd asd-millennio-frontend
+          npm run lint
+
+      - name: Type check
+        run: |
+          cd asd-millennio-frontend
+          npx tsc --noEmit
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+          NEXT_PUBLIC_KEYCLOAK_REALM: millennio-asd
+          NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: millennio-frontend
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+        run: |
+          cd asd-millennio-frontend
+          npm run build

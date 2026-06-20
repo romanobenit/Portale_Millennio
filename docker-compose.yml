@@ -1,0 +1,124 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obbligatoria in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-millennio}
+      # Crea automaticamente il DB separato per Keycloak
+      POSTGRES_MULTIPLE_DATABASES: "${POSTGRES_DB:-millennio},${KEYCLOAK_DB:-keycloak}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-multiple-db.sh:/docker-entrypoint-initdb.d/init-multiple-db.sh:ro
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./asd-millennio-backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-millennio}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./asd-millennio-frontend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${APP_URL:-https://millennioasd.com}/api/v1
+    depends_on:
+      - backend
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  celery-worker:
+    build:
+      context: ./asd-millennio-backend
+      dockerfile: Dockerfile
+    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-millennio}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A core.celery_app.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    # PRODUZIONE: usare 'start' con KC_HTTPS_* configurato e certificato TLS
+    # SVILUPPO: 'start-dev' — non usare in produzione (disabilita SSL e clustering)
+    command: ${KEYCLOAK_CMD:-start-dev}
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-postgres}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obbligatoria}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD obbligatoria in .env}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:-localhost}
+      KC_PROXY: edge
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  millennio-net:
+    driver: bridge

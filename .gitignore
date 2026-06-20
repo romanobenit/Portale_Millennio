@@ -1,0 +1,70 @@
+# ============================================================
+# ASD Millennio — .gitignore root
+# ============================================================
+
+# ----- Variabili d'ambiente (MAI committare) -----
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ----- Python / Backend -----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ----- Node / Frontend -----
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+.npm/
+
+# ----- Hardhat / Contracts -----
+asd-millennio-contracts/artifacts/
+asd-millennio-contracts/cache/
+asd-millennio-contracts/typechain-types/
+asd-millennio-contracts/coverage/
+asd-millennio-contracts/coverage.json
+
+# ----- Editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ----- Log -----
+*.log
+logs/
+
+# ----- Docker -----
+*.override.yml
+
+# ----- Backup / Temporanei -----
+*.bak
+*.tmp
+backups/
+
+# ----- Claude Code (locale) -----
+.claude/settings.local.json
+
+# ----- Script di verifica temporanei -----
+_verify_*.py
