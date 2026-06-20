@@ -13,26 +13,29 @@ import json
 from datetime import datetime, timezone
 from uuid import UUID
 
+import stripe
 from celery.utils.log import get_task_logger
 from sqlalchemy import select
 
 from core.celery_app import celery_app
 from core.config import get_settings
-from core.database import AsyncSessionLocal
+from core.database import WorkerSessionLocal
 from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
 from models.slot_calendario import SlotCalendario
 from models.tessera import Tessera
 from models.wallet import WalletCustodiale
+from modules.calendario.service import CalendarioService
 from modules.nft.ical import calcola_sha256, genera_ical_content
 from modules.nft.ipfs import costruisci_metadati_nft, upload_json_to_ipfs
 
 task_logger = get_task_logger(__name__)
 settings = get_settings()
+stripe.api_key = settings.stripe_secret_key
 
 
 async def _run_mint(acquisto_id: UUID) -> None:
     """Core async: genera iCal, carica IPFS, minta NFT, aggiorna DB."""
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         try:
             result = await db.execute(select(AcquistoNFT).where(AcquistoNFT.id == acquisto_id))
             acquisto = result.scalar_one()
@@ -78,37 +81,53 @@ async def _run_mint(acquisto_id: UUID) -> None:
                 fascia_conti[s.fascia] += 1
             fascia_prevalente = max(fascia_conti, key=fascia_conti.get) if slots else "notte"
 
-            # Prima: minta NFT su Polygon per ottenere il token_id reale
-            from modules.nft.blockchain import mint_nft, update_token_uri
+            from modules.nft.blockchain import mint_nft_with_slots, update_token_uri
 
-            # Upload iCal placeholder su IPFS, poi aggiorna dopo il mint con token_id reale.
-            # Usiamo un URI temporaneo per il mint e aggiorniamo tokenURI dopo
-            # (soluzione: genera iCal con token_id corretto post-mint).
-            # Flusso corretto: mint → ottieni token_id → genera iCal → upload IPFS → updateTokenURI
-            # Per ora: mint con URI temporaneo, poi aggiorna.
-            # Genera iCal pre-mint con token_id=0 (verrà sostituito dopo il mint)
-            ical_content_pre = genera_ical_content(
-                slots, 0, tessera_id, settings.contract_address_palasirion_nft,
-                ore_per_slot=ore_per_slot,
-            )
+            # CHECKPOINT idempotenza: minta on-chain SOLO se non già fatto.
+            # Se un tentativo precedente ha mintato ma è poi fallito (update_token_uri,
+            # IPFS, commit), token_id è già persistito → si riprende senza ri-mintare.
+            if acquisto.token_id is None:
+                ical_pre = genera_ical_content(
+                    slots, 0, tessera_id, settings.contract_address_palasirion_nft,
+                    ore_per_slot=ore_per_slot,
+                )
+                ical_hash_pre = calcola_sha256(ical_pre)
+                metadati_pre = costruisci_metadati_nft(
+                    slots_count=len(slots),
+                    data_primo_slot=data_primo,
+                    fascia_prevalente=fascia_prevalente,
+                    ore_totali=ore_totali,
+                    importo_eur=float(acquisto.importo_eur),
+                    ical_content=ical_pre,
+                    ical_sha256=ical_hash_pre,
+                    tessera_id=tessera_id,
+                )
+                ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
 
-            metadati_pre = costruisci_metadati_nft(
-                slots_count=len(slots),
-                data_primo_slot=data_primo,
-                fascia_prevalente=fascia_prevalente,
-                ore_totali=ore_totali,
-                importo_eur=float(acquisto.importo_eur),
-                ical_content=ical_content_pre,
-                ical_sha256=calcola_sha256(ical_content_pre),
-                tessera_id=tessera_id,
-            )
-            ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
+                # slotKey per-ora "{data}_{fascia}_{ora}" → registrati on-chain:
+                # il contratto reverta se una qualsiasi ora è già prenotata (anti double-sell).
+                slot_keys = [
+                    f"{slot.data.isoformat()}_{slot.fascia}_{ora:02d}"
+                    for slot in slots
+                    for ora in sorted(ore_per_slot.get(str(slot.id), []))
+                ]
+                token_id = await mint_nft_with_slots(
+                    wallet.wallet_address, ipfs_uri_temp, slot_keys, ical_hash_pre,
+                )
+                # Persisti SUBITO il token_id in un commit dedicato: rende il mint
+                # idempotente rispetto ai retry (niente doppio mint on-chain).
+                acquisto.token_id = token_id
+                acquisto.contract_address = settings.contract_address_palasirion_nft
+                await db.commit()
+            else:
+                token_id = acquisto.token_id
+                task_logger.info(
+                    "Acquisto %s già mintato on-chain (token_id=%s) — riprendo dal checkpoint.",
+                    acquisto_id, token_id,
+                )
 
-            token_id = await mint_nft(
-                wallet.wallet_address, ipfs_uri_temp, wallet.encrypted_private_key
-            )
-
-            # Ora che conosciamo il token_id reale, rigenera iCal e metadati con i dati corretti
+            # Rigenera iCal/metadati con il token_id reale → IPFS → aggiorna URI on-chain.
+            # update_token_uri è ri-eseguibile (idempotente a livello di stato finale).
             ical_content = genera_ical_content(
                 slots, token_id, tessera_id, settings.contract_address_palasirion_nft,
                 ore_per_slot=ore_per_slot,
@@ -126,34 +145,19 @@ async def _run_mint(acquisto_id: UUID) -> None:
                 tessera_id=tessera_id,
             )
             ipfs_uri = await upload_json_to_ipfs(metadati)
-
-            # Aggiorna l'URI on-chain (il mint usa URI temporanea senza token_id reale).
-            # Senza questo step, tokenURI() su Polygonscan mostrerebbe metadati errati.
             await update_token_uri(token_id, ipfs_uri, ical_hash)
 
-            acquisto.token_id = token_id
             acquisto.stato = "mintato"
             acquisto.ipfs_uri = ipfs_uri
-            acquisto.contract_address = settings.contract_address_palasirion_nft
             # Backup off-chain (PRD §RNF-BLOCKCHAIN-002)
             acquisto.metadati_json = json.dumps(metadati)
             acquisto.ical_content = ical_content
             acquisto.ical_sha256 = ical_hash
 
+            # Le ore sono già state marcate come vendute alla CONFERMA del pagamento
+            # (claim atomico FOR UPDATE in conferma_pagamento). Qui marchiamo solo
+            # il token_id sugli slot per riferimento.
             for slot in slots:
-                ore_slot = ore_per_slot.get(str(slot.id), [])
-                vendute = set(slot.ore_vendute or []) | set(ore_slot)
-                in_lock = set(slot.ore_in_lock or []) - set(ore_slot)
-                slot.ore_vendute = sorted(vendute)
-                slot.ore_in_lock = sorted(in_lock)
-                if not slot.ore_in_lock:
-                    slot.bloccato_fino_a = None
-                h_inizio = slot.ora_inizio.hour
-                ore_fascia = set(range(h_inizio, h_inizio + slot.ore_totali))
-                if slot.ore_vendute and set(slot.ore_vendute) >= ore_fascia:
-                    slot.stato = "esaurito"
-                elif slot.ore_vendute:
-                    slot.stato = "parziale"
                 slot.nft_token_id = token_id
 
             await db.commit()
@@ -168,45 +172,62 @@ async def _run_mint(acquisto_id: UUID) -> None:
 
 async def _segna_fallito(acquisto_id: UUID) -> None:
     """
-    Marca l'acquisto come fallito e rilascia gli slot bloccati.
-    Chiamato dopo l'esaurimento dei retry — gli slot tornano a 'libero'
-    così possono essere rivenduti.
+    Mint fallito definitivamente dopo i retry.
+    Rimborsa il socio (idempotente), rilascia le ore claimate alla conferma del
+    pagamento e libera gli slot così possono essere rivenduti.
     """
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         try:
-            result = await db.execute(
+            acquisto = (await db.execute(
                 select(AcquistoNFT).where(AcquistoNFT.id == acquisto_id)
-            )
-            acquisto = result.scalar_one_or_none()
+            )).scalar_one_or_none()
             if not acquisto:
                 task_logger.error("Acquisto non trovato per segna_fallito: %s", acquisto_id)
                 return
 
-            acquisto.stato = "fallito"
+            # Rimborso Stripe idempotente (il pagamento è già stato incassato)
+            refunded = False
+            if acquisto.stripe_payment_id:
+                try:
+                    await asyncio.to_thread(
+                        stripe.Refund.create,
+                        payment_intent=acquisto.stripe_payment_id,
+                        idempotency_key=f"refund-{acquisto_id}",
+                    )
+                    refunded = True
+                except Exception as refund_err:  # noqa: BLE001
+                    task_logger.critical(
+                        "RIMBORSO FALLITO per acquisto %s: %s — intervento manuale richiesto",
+                        acquisto_id, refund_err,
+                    )
+            acquisto.stato = "rimborsato" if refunded else "fallito"
 
-            links_result = await db.execute(
-                select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto_id)
+            # Rilascia le ore claimate alla conferma (rimuovi ore_acquistate da ore_vendute)
+            links_join = await db.execute(
+                select(AcquistoNFTSlot, SlotCalendario)
+                .join(SlotCalendario, AcquistoNFTSlot.slot_calendario_id == SlotCalendario.id)
+                .where(AcquistoNFTSlot.acquisto_nft_id == acquisto_id)
+                .with_for_update()
             )
-            slot_ids = [ln.slot_calendario_id for ln in links_result.scalars().all()]
-
-            if slot_ids:
-                slots_result = await db.execute(
-                    select(SlotCalendario).where(SlotCalendario.id.in_(slot_ids))
-                )
-                for slot in slots_result.scalars().all():
-                    if slot.stato in ("bloccato", "parziale", "esaurito"):
-                        slot.ore_in_lock = []
-                        slot.bloccato_fino_a = None
-                        slot.nft_token_id = None
-                        slot.stato = "libero" if not slot.ore_vendute else "parziale"
+            n_slot = 0
+            for ln, slot in links_join.all():
+                n_slot += 1
+                ore_acq = set(ln.ore_acquistate or [])
+                slot.ore_vendute = sorted(set(slot.ore_vendute or []) - ore_acq)
+                slot.ore_in_lock = sorted(set(slot.ore_in_lock or []) - ore_acq)
+                slot.nft_token_id = None
+                if not slot.ore_in_lock:
+                    slot.bloccato_fino_a = None
+                slot.stato = CalendarioService._calcola_stato(slot)
 
             await db.commit()
             task_logger.error(
-                "Acquisto %s marcato come FALLITO. %d slot rilasciati.",
+                "Acquisto %s %s. %d slot rilasciati.",
                 acquisto_id,
-                len(slot_ids),
+                "RIMBORSATO" if refunded else "FALLITO (rimborso manuale necessario)",
+                n_slot,
             )
-            # TODO: inviare email di notifica al socio via Resend (Sprint 2)
+            # TODO: notifica email al socio via Resend (Sprint 2)
 
         except Exception as cleanup_exc:
             await db.rollback()

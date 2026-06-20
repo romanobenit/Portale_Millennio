@@ -92,6 +92,31 @@ services:
       timeout: 10s
       retries: 3
 
+  # Worker dedicato alle transazioni on-chain (mint NFT): concorrenza 1 per
+  # serializzare i mint ed evitare la collisione di nonce del minter.
+  celery-mint-worker:
+    build:
+      context: ./asd-millennio-backend
+      dockerfile: Dockerfile
+    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=1 -Q mint -n mint@%h
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-millennio}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - millennio-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A core.celery_app.celery_app inspect ping -d mint@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     # PRODUZIONE: usare 'start' con KC_HTTPS_* configurato e certificato TLS

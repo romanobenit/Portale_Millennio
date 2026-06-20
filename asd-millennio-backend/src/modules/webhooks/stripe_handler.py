@@ -63,6 +63,7 @@ async def stripe_webhook(
 
     nft_service = NFTService(db)
     event_type = event["type"]
+    acq_to_mint = None  # id acquisto da accodare DOPO il commit (no enqueue-before-commit)
 
     if event_type == "checkout.session.completed":
         session = event["data"]["object"]
@@ -72,7 +73,10 @@ async def stripe_webhook(
             from modules.campi.service import CampiService
             await CampiService(db).conferma_pagamento(session_id)
         else:
-            await nft_service.conferma_pagamento(session_id)
+            acq_to_mint = await nft_service.conferma_pagamento(session_id)
+
+    elif event_type == "checkout.session.expired":
+        await nft_service.gestisci_sessione_scaduta(event["data"]["object"]["id"])
 
     elif event_type == "payment_intent.payment_failed":
         pi_id = event["data"]["object"]["id"]
@@ -156,5 +160,12 @@ async def stripe_webhook(
     log.processed = True
     log.processed_at = datetime.now(timezone.utc)
     await db.flush()
+
+    # Commit ESPLICITO prima di accodare il mint: evita l'enqueue-before-commit
+    # (il worker non deve mai vedere uno stato non committato o poi rolled-back).
+    await db.commit()
+    if acq_to_mint is not None:
+        from tasks.mint import esegui_mint_task
+        esegui_mint_task.delay(str(acq_to_mint))
 
     return {"status": "ok"}

@@ -25,6 +25,7 @@ contract PalasirionNFT is
     mapping(address => bool) private _minters;
     mapping(string => bool) private _bookedSlots;
     mapping(uint256 => string) private _tokenSlotKeys;
+    mapping(uint256 => string[]) private _tokenSlotKeysList;
     mapping(uint256 => string) private _tokenIcalHashes;
 
     modifier onlyMinter() {
@@ -74,6 +75,37 @@ contract PalasirionNFT is
         return tokenId;
     }
 
+    /**
+     * @notice Minta un NFT prenotando PIÙ slot per-ora in un'unica transazione.
+     *         Reverta se anche un solo slotKey è già prenotato (anti double-sell on-chain).
+     *         Usato dal backend: un acquisto = un NFT con tutte le ore scelte.
+     */
+    function mintNFTWithSlots(
+        address to,
+        string memory uri,
+        string[] memory slotKeys,
+        string memory icalHash
+    ) external onlyMinter returns (uint256) {
+        require(slotKeys.length > 0, "PalasirionNFT: nessuno slot");
+        for (uint256 i = 0; i < slotKeys.length; i++) {
+            require(!_bookedSlots[slotKeys[i]], "PalasirionNFT: slot gia prenotato");
+        }
+
+        uint256 tokenId = _nextTokenId++;
+        _safeMint(address(this), tokenId);
+        _setTokenURI(tokenId, uri);
+
+        for (uint256 i = 0; i < slotKeys.length; i++) {
+            _bookedSlots[slotKeys[i]] = true;
+            _tokenSlotKeysList[tokenId].push(slotKeys[i]);
+            emit SlotBooked(tokenId, to, icalHash, slotKeys[i]);
+        }
+        _tokenIcalHashes[tokenId] = icalHash;
+
+        _safeTransfer(address(this), to, tokenId, "");
+        return tokenId;
+    }
+
     // ─── Query ──────────────────────────────────────────────────────────────────
 
     function getTokensByOwner(address ownerAddr) external view returns (uint256[] memory) {
@@ -95,6 +127,10 @@ contract PalasirionNFT is
 
     function getTokenIcalHash(uint256 tokenId) external view returns (string memory) {
         return _tokenIcalHashes[tokenId];
+    }
+
+    function getTokenSlotKeys(uint256 tokenId) external view returns (string[] memory) {
+        return _tokenSlotKeysList[tokenId];
     }
 
     // ─── Gestione minter ────────────────────────────────────────────────────────

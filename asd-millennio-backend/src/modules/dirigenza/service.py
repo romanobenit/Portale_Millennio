@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -76,15 +77,27 @@ class DirigenzaService:
         engine = PricingEngine(self.db)
         info = await engine.calcola_prezzo_ora(req.fascia, data_slot)
 
-        # Calcola % libere effettiva
+        # Calcola % libere effettiva sul MESE dello slot (coerente con il pricing)
+        primo = date(data_slot.year, data_slot.month, 1)
+        ultimo = date(data_slot.year, data_slot.month, monthrange(data_slot.year, data_slot.month)[1])
         result = await self.db.execute(
             select(func.sum(SlotCalendario.ore_totali)).where(
-                SlotCalendario.fascia == req.fascia
+                and_(
+                    SlotCalendario.fascia == req.fascia,
+                    SlotCalendario.data >= primo,
+                    SlotCalendario.data <= ultimo,
+                )
             )
         )
         ore_tot = int(result.scalar() or 0)
         result2 = await self.db.execute(
-            select(SlotCalendario.ore_vendute).where(SlotCalendario.fascia == req.fascia)
+            select(SlotCalendario.ore_vendute).where(
+                and_(
+                    SlotCalendario.fascia == req.fascia,
+                    SlotCalendario.data >= primo,
+                    SlotCalendario.data <= ultimo,
+                )
+            )
         )
         ore_vend = sum(len(r.ore_vendute or []) for r in result2)
         pct_libere = ((ore_tot - ore_vend) / ore_tot * 100) if ore_tot else None
@@ -249,19 +262,45 @@ class DirigenzaService:
         totale_ricavi = Decimal(str(row_acq[0] or 0))
         totale_nft = int(row_acq[1] or 0)
 
-        # Ricavi per fascia: pesati su ore_vendute × tariffa_base_fascia.
-        # Una ponderazione lineare sulle ore sarebbe scorretta perché notte (€15/h),
-        # mattina (€20/h) e pomeriggio (€25/h) hanno tariffe diverse.
+        # Ricavi per fascia: allocazione PER-ACQUISTO (non globale).
+        # Ogni acquisto distribuisce il proprio importo tra le fasce dei suoi slot,
+        # pesato su ore × tariffa_base. Esatto per acquisti mono-fascia (la maggioranza),
+        # stima proporzionale solo per quelli misti. NB: l'importo esatto per-fascia non
+        # è persistito a granularità slot — per un dato certificato al centesimo servirebbe
+        # salvare il costo per slot al momento dell'acquisto.
         TARIFFA_BASE = {"notte": Decimal("15"), "mattina": Decimal("20"), "pomeriggio": Decimal("25")}
-        pesi = {
-            f.fascia: Decimal(str(f.ore_vendute)) * TARIFFA_BASE[f.fascia]
-            for f in fasce_out
-        }
-        peso_totale = sum(pesi.values()) or Decimal("1")
-        for f in fasce_out:
-            f.ricavi_lordi = float(
-                (totale_ricavi * pesi[f.fascia] / peso_totale).quantize(Decimal("0.01"))
+        alloc_rows = await self.db.execute(
+            select(
+                AcquistoNFT.id,
+                AcquistoNFT.importo_eur,
+                SlotCalendario.fascia,
+                func.coalesce(func.cardinality(AcquistoNFTSlot.ore_acquistate), 0),
             )
+            .join(AcquistoNFTSlot, AcquistoNFTSlot.acquisto_nft_id == AcquistoNFT.id)
+            .join(SlotCalendario, AcquistoNFTSlot.slot_calendario_id == SlotCalendario.id)
+            .where(and_(
+                AcquistoNFT.stato.in_(["pagato", "mintato"]),
+                AcquistoNFT.created_at >= datetime(anno, 1, 1, tzinfo=timezone.utc),
+                AcquistoNFT.created_at < datetime(anno + 1, 1, 1, tzinfo=timezone.utc),
+            ))
+        )
+        importi: dict = {}
+        ore_acq_fascia: dict = {}
+        for aid, importo, fascia, n_ore in alloc_rows:
+            importi[aid] = Decimal(str(importo or 0))
+            ore_acq_fascia.setdefault(aid, {})
+            ore_acq_fascia[aid][fascia] = ore_acq_fascia[aid].get(fascia, 0) + int(n_ore or 0)
+
+        ricavi_fascia = {f: Decimal("0") for f in FASCE}
+        for aid, fasce_ore in ore_acq_fascia.items():
+            pesi = {f: Decimal(n) * TARIFFA_BASE.get(f, Decimal("0")) for f, n in fasce_ore.items()}
+            tot_peso = sum(pesi.values()) or Decimal("1")
+            for f, p in pesi.items():
+                if f in ricavi_fascia:
+                    ricavi_fascia[f] += importi[aid] * p / tot_peso
+
+        for f in fasce_out:
+            f.ricavi_lordi = float(ricavi_fascia.get(f.fascia, Decimal("0")).quantize(Decimal("0.01")))
 
         return RendicontoAnnuale(
             anno=anno,

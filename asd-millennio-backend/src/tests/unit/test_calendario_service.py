@@ -131,12 +131,13 @@ async def test_pricing_prezzo_calcola_corretto():
     db = AsyncMock()
 
     # Mock _load_rules: restituisce regole vuote (usa fallback)
-    # Mock _get_pct_libere_per_fascia: 100% libere → moltiplicatore scarsità 1.0
+    # Mock _get_pct_libere_per_periodo: 100% libere → moltiplicatore scarsità 1.0.
+    # Chiave per-mese: (fascia, anno, mese) dello slot.
     with patch.object(PricingEngine, "_load_rules") as mock_load, \
-         patch.object(PricingEngine, "_get_pct_libere_per_fascia") as mock_pct:
+         patch.object(PricingEngine, "_get_pct_libere_per_periodo") as mock_pct:
         from modules.calendario.pricing import _CachedRules
         mock_load.return_value = _CachedRules([])
-        mock_pct.return_value = {"mattina": 100.0}
+        mock_pct.return_value = {("mattina", 2027, 6): 100.0}
 
         engine = PricingEngine(db)
         slot = make_slot(date(2027, 6, 2), "mattina", time(8, 0), 5)

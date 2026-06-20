@@ -8,6 +8,7 @@ Il pricing è sempre calcolato server-side — il frontend riceve solo il prezzo
 """
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
@@ -105,31 +106,42 @@ class PricingEngine:
         )
         return _CachedRules(list(result.scalars().all()))
 
-    async def _get_pct_libere_per_fascia(self, fasce: set[str]) -> dict[str, float]:
-        """Calcola % ore libere per ogni fascia richiesta in due query."""
-        totali: dict[str, int] = {}
-        vendute_count: dict[str, int] = {}
-        for fascia in fasce:
-            res = await self.db.execute(
+    async def _get_pct_libere_per_periodo(
+        self, chiavi: set[tuple[str, int, int]]
+    ) -> dict[tuple[str, int, int], float]:
+        """
+        Calcola % ore libere per ogni (fascia, anno, mese) richiesto.
+        La scarsità è valutata sul MESE dello slot, non sull'intero periodo
+        pluriennale: così la leva resta reattiva alla domanda effettiva del periodo.
+        """
+        result: dict[tuple[str, int, int], float] = {}
+        for (fascia, anno, mese) in chiavi:
+            primo = date(anno, mese, 1)
+            ultimo = date(anno, mese, monthrange(anno, mese)[1])
+            res_tot = await self.db.execute(
                 select(func.sum(SlotCalendario.ore_totali)).where(
-                    SlotCalendario.fascia == fascia
+                    and_(
+                        SlotCalendario.fascia == fascia,
+                        SlotCalendario.data >= primo,
+                        SlotCalendario.data <= ultimo,
+                    )
                 )
             )
-            totali[fascia] = int(res.scalar() or 0)
-
-            res2 = await self.db.execute(
-                select(SlotCalendario.ore_vendute).where(SlotCalendario.fascia == fascia)
-            )
-            vendute_count[fascia] = sum(len(row or []) for (row,) in res2)
-
-        result: dict[str, float] = {}
-        for fascia in fasce:
-            tot = totali.get(fascia, 0)
+            tot = int(res_tot.scalar() or 0)
             if tot == 0:
-                result[fascia] = 100.0
-            else:
-                vend = vendute_count.get(fascia, 0)
-                result[fascia] = ((tot - vend) / tot) * 100
+                result[(fascia, anno, mese)] = 100.0
+                continue
+            res_vend = await self.db.execute(
+                select(SlotCalendario.ore_vendute).where(
+                    and_(
+                        SlotCalendario.fascia == fascia,
+                        SlotCalendario.data >= primo,
+                        SlotCalendario.data <= ultimo,
+                    )
+                )
+            )
+            vend = sum(len(row or []) for (row,) in res_vend)
+            result[(fascia, anno, mese)] = ((tot - vend) / tot) * 100
         return result
 
     def _calcola_prezzo_ora(
@@ -160,8 +172,9 @@ class PricingEngine:
     async def calcola_prezzo_ora(self, fascia: str, data_slot: date) -> dict:
         """Prezzo per singola ora — usato per preview singola fascia."""
         rules = await self._load_rules()
-        pct_map = await self._get_pct_libere_per_fascia({fascia})
-        return self._calcola_prezzo_ora(fascia, data_slot, rules, pct_map[fascia])
+        chiave = (fascia, data_slot.year, data_slot.month)
+        pct_map = await self._get_pct_libere_per_periodo({chiave})
+        return self._calcola_prezzo_ora(fascia, data_slot, rules, pct_map[chiave])
 
     async def calcola_prezzo_selezione(self, selezione: list[dict]) -> dict:
         """
@@ -174,10 +187,13 @@ class PricingEngine:
             return {"ore_notte": 0, "ore_mattina": 0, "ore_pomeriggio": 0,
                     "costo_totale": 0.0, "dettaglio": []}
 
-        # Carica tutto in anticipo — 1 query rules + 2 query per fascia unica
+        # Carica tutto in anticipo — 1 query rules + 2 query per (fascia, mese) unico
         rules = await self._load_rules()
-        fasce_usate = {item["slot"].fascia for item in selezione if item.get("ore")}
-        pct_map = await self._get_pct_libere_per_fascia(fasce_usate)
+        chiavi = {
+            (item["slot"].fascia, item["slot"].data.year, item["slot"].data.month)
+            for item in selezione if item.get("ore")
+        }
+        pct_map = await self._get_pct_libere_per_periodo(chiavi)
 
         costo_totale = Decimal("0")
         dettaglio: list[dict] = []
@@ -188,7 +204,7 @@ class PricingEngine:
             if not ore:
                 continue
 
-            pct_libere = pct_map.get(slot.fascia, 100.0)
+            pct_libere = pct_map.get((slot.fascia, slot.data.year, slot.data.month), 100.0)
             info = self._calcola_prezzo_ora(slot.fascia, slot.data, rules, pct_libere)
             costo_slot = Decimal(str(info["prezzo_ora"])) * len(ore)
             costo_totale += costo_slot
