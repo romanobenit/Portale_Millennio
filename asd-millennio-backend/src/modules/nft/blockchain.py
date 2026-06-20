@@ -86,7 +86,8 @@ async def mint_nft(recipient_address: str, token_uri: str, minter_encrypted_key:
         abi=PALASIRION_NFT_ABI,
     )
 
-    nonce = await w3.eth.get_transaction_count(minter.address)
+    # 'pending' include le tx non ancora minate: evita riuso dello stesso nonce
+    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
     gas_price = await w3.eth.gas_price
 
     mint_fn = contract.functions.mintNFT(
@@ -149,7 +150,8 @@ async def update_token_uri(token_id: int, new_uri: str, new_ical_hash: str) -> N
         address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
         abi=PALASIRION_NFT_ABI,
     )
-    nonce = await w3.eth.get_transaction_count(minter.address)
+    # 'pending' include le tx non ancora minate: evita riuso dello stesso nonce
+    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
     gas_price = await w3.eth.gas_price
 
     for fn_name, arg in [("updateTokenURI", new_uri), ("updateIcalHash", new_ical_hash)]:

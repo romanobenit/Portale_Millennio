@@ -23,4 +23,10 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     # Visibilità stato task per il retry
     task_store_eager_result=True,
+    # Le transazioni on-chain (mint) vanno su una coda dedicata servita da un
+    # worker a concorrenza 1: serializza i mint ed evita la collisione di nonce.
+    task_routes={
+        "tasks.mint.esegui_mint_task": {"queue": "mint"},
+    },
+    task_default_queue="celery",
 )

@@ -133,6 +133,9 @@ class NFTService:
                 }
             ],
             mode="payment",
+            # Finestra di pagamento limitata (~lock ore). Alla scadenza Stripe invia
+            # checkout.session.expired e il backend rilascia i lock. Minimo Stripe: 30 min.
+            expires_at=int(time_module.time()) + 31 * 60,
             success_url=f"{settings.app_url}/dashboard/nft/successo?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{settings.app_url}/dashboard/nft/annullato",
             metadata={
@@ -198,33 +201,148 @@ class NFTService:
                 detail="Il minore specificato non risulta associato al tuo profilo",
             )
 
-    async def conferma_pagamento(self, stripe_session_id: str) -> None:
-        """Chiamato dal webhook Stripe dopo checkout.session.completed."""
+    async def conferma_pagamento(self, stripe_session_id: str) -> UUID | None:
+        """
+        Chiamato dal webhook Stripe dopo checkout.session.completed.
+
+        Ritorna l'id dell'acquisto da mintare — che il chiamante deve accodare
+        DOPO il commit della transazione (no enqueue-before-commit) — oppure None.
+
+        Anti double-sell: ri-valida e CLAIMA le ore con SELECT … FOR UPDATE al
+        momento della conferma del pagamento. Se un'ora è già stata venduta
+        (lock scaduto e comprata da altri) → rimborso automatico, niente mint.
+        """
         result = await self.db.execute(
             select(AcquistoNFT).where(AcquistoNFT.stripe_session_id == stripe_session_id)
         )
         acquisto = result.scalar_one_or_none()
         if not acquisto:
             logger.warning("Acquisto non trovato per session_id: %s", stripe_session_id)
-            return
+            return None
         if acquisto.stato != "in_attesa_pagamento":
             logger.info("Acquisto già processato: %s", stripe_session_id)
-            return
+            return None
 
         # Doppia verifica: Stripe API retrieve (sincrona → thread)
         session = await asyncio.to_thread(stripe.checkout.Session.retrieve, stripe_session_id)
         if session.payment_status != "paid":
             acquisto.stato = "fallito"
             await self.db.flush()
-            return
+            return None
 
         acquisto.stripe_payment_id = session.payment_intent
+
+        # Carica i link e ordina deterministicamente (anti-deadlock sotto FOR UPDATE)
+        links_res = await self.db.execute(
+            select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto.id)
+        )
+        links = sorted(links_res.scalars().all(), key=lambda ln: str(ln.slot_calendario_id))
+
+        # Re-validazione atomica: blocca ogni slot e verifica che le ore non siano
+        # già vendute da un altro acquisto confermato.
+        slots_da_claimare: list[tuple[SlotCalendario, set[int]]] = []
+        conflitto = False
+        for ln in links:
+            slot = (await self.db.execute(
+                select(SlotCalendario)
+                .where(SlotCalendario.id == ln.slot_calendario_id)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if slot is None:
+                conflitto = True
+                break
+            ore_acq = set(ln.ore_acquistate or [])
+            if ore_acq & set(slot.ore_vendute or []):
+                conflitto = True
+                break
+            slots_da_claimare.append((slot, ore_acq))
+
+        if conflitto:
+            await self._rimborsa_e_rilascia(acquisto, links, motivo="ore non più disponibili")
+            return None
+
+        # Claim atomico: sposta le ore da in_lock a vendute ADESSO (server-side, sotto lock)
+        for slot, ore_acq in slots_da_claimare:
+            slot.ore_vendute = sorted(set(slot.ore_vendute or []) | ore_acq)
+            slot.ore_in_lock = sorted(set(slot.ore_in_lock or []) - ore_acq)
+            if not slot.ore_in_lock:
+                slot.bloccato_fino_a = None
+            slot.stato = CalendarioService._calcola_stato(slot)
+
         acquisto.stato = "pagato"
         await self.db.flush()
+        return acquisto.id
 
-        from tasks.mint import esegui_mint_task
+    async def _rimborsa_e_rilascia(
+        self, acquisto: AcquistoNFT, links: list[AcquistoNFTSlot], motivo: str
+    ) -> None:
+        """
+        Rimborsa il pagamento (idempotente) e rilascia eventuali lock dell'acquisto.
+        Non tocca mai le ore già vendute ad altri.
+        """
+        for ln in links:
+            slot = (await self.db.execute(
+                select(SlotCalendario)
+                .where(SlotCalendario.id == ln.slot_calendario_id)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if slot is None:
+                continue
+            ore_acq = set(ln.ore_acquistate or [])
+            slot.ore_in_lock = sorted(set(slot.ore_in_lock or []) - ore_acq)
+            if not slot.ore_in_lock:
+                slot.bloccato_fino_a = None
+            slot.stato = CalendarioService._calcola_stato(slot)
 
-        esegui_mint_task.delay(str(acquisto.id))
+        if acquisto.stripe_payment_id:
+            try:
+                await asyncio.to_thread(
+                    stripe.Refund.create,
+                    payment_intent=acquisto.stripe_payment_id,
+                    idempotency_key=f"refund-{acquisto.id}",
+                )
+                acquisto.stato = "rimborsato"
+                logger.info("Rimborso emesso per acquisto %s (%s)", acquisto.id, motivo)
+            except Exception as e:  # noqa: BLE001
+                acquisto.stato = "fallito"
+                logger.critical(
+                    "RIMBORSO FALLITO per acquisto %s (%s): %s — intervento manuale richiesto",
+                    acquisto.id, motivo, e,
+                )
+        else:
+            acquisto.stato = "fallito"
+        # TODO: notifica email al socio via Resend (Sprint 2)
+        await self.db.flush()
+
+    async def gestisci_sessione_scaduta(self, stripe_session_id: str) -> None:
+        """
+        Webhook checkout.session.expired: la finestra di pagamento è scaduta.
+        Rilascia i lock dell'acquisto così le ore tornano disponibili.
+        """
+        acquisto = (await self.db.execute(
+            select(AcquistoNFT).where(AcquistoNFT.stripe_session_id == stripe_session_id)
+        )).scalar_one_or_none()
+        if not acquisto or acquisto.stato != "in_attesa_pagamento":
+            return
+        acquisto.stato = "fallito"
+        links = (await self.db.execute(
+            select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto.id)
+        )).scalars().all()
+        for ln in links:
+            slot = (await self.db.execute(
+                select(SlotCalendario)
+                .where(SlotCalendario.id == ln.slot_calendario_id)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if slot is None:
+                continue
+            ore_acq = set(ln.ore_acquistate or [])
+            slot.ore_in_lock = sorted(set(slot.ore_in_lock or []) - ore_acq)
+            if not slot.ore_in_lock:
+                slot.bloccato_fino_a = None
+            slot.stato = CalendarioService._calcola_stato(slot)
+        await self.db.flush()
+        logger.info("Sessione Stripe scaduta: lock rilasciati per acquisto %s", acquisto.id)
 
     async def verifica_accesso(self, token_id: int, slot_key: str, verificato_da: UUID | None) -> NFTVerificaResponse:
         result = await self.db.execute(
