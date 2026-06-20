@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
@@ -14,12 +14,17 @@ StatoAcquisto = Enum(
 
 class AcquistoNFT(Base):
     __tablename__ = "acquisti_nft"
+    # token_id è unico PER CONTRATTO, non globalmente: dopo un redeploy il nuovo
+    # contratto riparte da token 0 e collidererebbe con gli acquisti storici.
+    __table_args__ = (
+        UniqueConstraint("contract_address", "token_id", name="uq_acquisti_nft_contract_token"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     socio_id = Column(UUID(as_uuid=True), ForeignKey("soci.id"), nullable=False, index=True)
     stripe_session_id = Column(String, unique=True, nullable=False)
     stripe_payment_id = Column(String, nullable=True)
-    token_id = Column(Integer, unique=True, nullable=True)
+    token_id = Column(Integer, nullable=True)
     contract_address = Column(String, nullable=True)
     ipfs_uri = Column(String, nullable=True)
     ical_sha256 = Column(String, nullable=True)
