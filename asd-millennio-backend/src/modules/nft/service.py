@@ -345,8 +345,13 @@ class NFTService:
         logger.info("Sessione Stripe scaduta: lock rilasciati per acquisto %s", acquisto.id)
 
     async def verifica_accesso(self, token_id: int, slot_key: str, verificato_da: UUID | None) -> NFTVerificaResponse:
+        # token_id è unico solo per contratto: filtra sul contratto corrente per
+        # non confondere token con lo stesso id emessi da un contratto precedente.
         result = await self.db.execute(
-            select(AcquistoNFT).where(AcquistoNFT.token_id == token_id)
+            select(AcquistoNFT).where(
+                AcquistoNFT.token_id == token_id,
+                AcquistoNFT.contract_address == settings.contract_address_palasirion_nft,
+            )
         )
         acquisto = result.scalar_one_or_none()
 

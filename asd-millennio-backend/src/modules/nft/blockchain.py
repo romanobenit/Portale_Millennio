@@ -1,5 +1,5 @@
 import asyncio
-import json
+from contextlib import asynccontextmanager
 
 from eth_account import Account
 from web3 import AsyncWeb3, Web3
@@ -67,6 +67,13 @@ PALASIRION_NFT_ABI = [
         "type": "function",
     },
     {
+        "inputs": [{"name": "tokenId", "type": "uint256"}],
+        "name": "getTokenSlotKeys",
+        "outputs": [{"name": "", "type": "string[]"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
         "anonymous": False,
         "inputs": [
             {"indexed": True, "name": "tokenId", "type": "uint256"},
@@ -80,11 +87,29 @@ PALASIRION_NFT_ABI = [
 ]
 
 
-def _get_web3() -> AsyncWeb3:
+@asynccontextmanager
+async def _web3():
+    """
+    Context manager per AsyncWeb3: chiude la sessione aiohttp del provider all'uscita
+    (evita "Unclosed client session", soprattutto col worker che usa asyncio.run per task).
+    """
     w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(settings.polygon_rpc_url))
-    # In web3.py v6, usare .add() — inject(layer=0) è stato rimosso
+    # In web3.py, usare .add() — inject(layer=0) è stato rimosso
     w3.middleware_onion.add(ExtraDataToPOAMiddleware)
-    return w3
+    try:
+        yield w3
+    finally:
+        try:
+            await w3.provider.disconnect()
+        except Exception:  # noqa: BLE001 — chiusura best-effort
+            pass
+
+
+def _contract(w3: AsyncWeb3):
+    return w3.eth.contract(
+        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
+        abi=PALASIRION_NFT_ABI,
+    )
 
 
 def _extract_token_id_from_receipt(receipt) -> int:
@@ -104,53 +129,43 @@ def _extract_token_id_from_receipt(receipt) -> int:
 
 
 async def mint_nft(recipient_address: str, token_uri: str, minter_encrypted_key: str) -> int:
-    """Minta un NFT e restituisce il token_id assegnato on-chain."""
-    w3 = _get_web3()
-    # AES decrypt è CPU-bound — thread separato
-    minter = await asyncio.to_thread(get_account_from_encrypted, minter_encrypted_key)
+    """Minta un NFT (versione semplice, senza slot) e restituisce il token_id."""
+    async with _web3() as w3:
+        # AES decrypt è CPU-bound — thread separato
+        minter = await asyncio.to_thread(get_account_from_encrypted, minter_encrypted_key)
+        contract = _contract(w3)
 
-    contract = w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
-    )
+        # 'pending' include le tx non ancora minate: evita riuso dello stesso nonce
+        nonce = await w3.eth.get_transaction_count(minter.address, "pending")
+        gas_price = await w3.eth.gas_price
 
-    # 'pending' include le tx non ancora minate: evita riuso dello stesso nonce
-    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
-    gas_price = await w3.eth.gas_price
+        mint_fn = contract.functions.mintNFT(
+            Web3.to_checksum_address(recipient_address), token_uri
+        )
+        try:
+            estimated_gas = await mint_fn.estimate_gas({"from": minter.address})
+            gas_limit = int(estimated_gas * 1.2)  # 20% di margine
+        except Exception as gas_err:
+            logger.warning("Gas estimation fallita, uso fallback 300000: %s", gas_err)
+            gas_limit = 300_000
 
-    mint_fn = contract.functions.mintNFT(
-        Web3.to_checksum_address(recipient_address), token_uri
-    )
-    # Stima gas esplicita: evita fallimenti on-chain per insufficient gas
-    try:
-        estimated_gas = await mint_fn.estimate_gas({"from": minter.address})
-        gas_limit = int(estimated_gas * 1.2)  # 20% di margine
-    except Exception as gas_err:
-        logger.warning("Gas estimation fallita, uso fallback 300000: %s", gas_err)
-        gas_limit = 300_000
-
-    tx = await mint_fn.build_transaction(
-        {
+        tx = await mint_fn.build_transaction({
             "from": minter.address,
             "nonce": nonce,
             "gasPrice": gas_price,
             "gas": gas_limit,
             "chainId": settings.polygon_chain_id,
-        }
-    )
-    # sign_transaction è sincrono (crittografia locale) — thread separato
-    signed = await asyncio.to_thread(minter.sign_transaction, tx)
+        })
+        signed = await asyncio.to_thread(minter.sign_transaction, tx)
+        tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
+        receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
-    # eth-account v0.11 usa rawTransaction (camelCase) come attributo primario
-    tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
-    receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        if receipt.status != 1:
+            raise RuntimeError(f"Transazione fallita: {tx_hash.hex()}")
 
-    if receipt.status != 1:
-        raise RuntimeError(f"Transazione fallita: {tx_hash.hex()}")
-
-    token_id = _extract_token_id_from_receipt(receipt)
-    logger.info("Token ID estratto dall'evento Transfer: %d", token_id)
-    return token_id
+        token_id = _extract_token_id_from_receipt(receipt)
+        logger.info("Token ID estratto dall'evento Transfer: %d", token_id)
+        return token_id
 
 
 async def mint_nft_with_slots(
@@ -165,94 +180,104 @@ async def mint_nft_with_slots(
     NON dal wallet del socio che non è autorizzato a mintare; il token è emesso
     verso il wallet custodiale del socio. Reverta on-chain se un slotKey è già preso.
     """
-    w3 = _get_web3()
-    minter = Account.from_key(settings.minter_private_key)
+    async with _web3() as w3:
+        minter = Account.from_key(settings.minter_private_key)
+        contract = _contract(w3)
 
-    contract = w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
-    )
+        nonce = await w3.eth.get_transaction_count(minter.address, "pending")
+        gas_price = await w3.eth.gas_price
 
-    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
-    gas_price = await w3.eth.gas_price
+        mint_fn = contract.functions.mintNFTWithSlots(
+            Web3.to_checksum_address(recipient_address), token_uri, slot_keys, ical_hash
+        )
+        try:
+            estimated_gas = await mint_fn.estimate_gas({"from": minter.address})
+            gas_limit = int(estimated_gas * 1.2)
+        except Exception as gas_err:
+            logger.warning("Gas estimation fallita (mintNFTWithSlots), fallback: %s", gas_err)
+            gas_limit = 250_000 + 70_000 * max(1, len(slot_keys))
 
-    mint_fn = contract.functions.mintNFTWithSlots(
-        Web3.to_checksum_address(recipient_address), token_uri, slot_keys, ical_hash
-    )
-    try:
-        estimated_gas = await mint_fn.estimate_gas({"from": minter.address})
-        gas_limit = int(estimated_gas * 1.2)
-    except Exception as gas_err:
-        logger.warning("Gas estimation fallita (mintNFTWithSlots), fallback: %s", gas_err)
-        gas_limit = 250_000 + 70_000 * max(1, len(slot_keys))
-
-    tx = await mint_fn.build_transaction(
-        {
+        tx = await mint_fn.build_transaction({
             "from": minter.address,
             "nonce": nonce,
             "gasPrice": gas_price,
             "gas": gas_limit,
             "chainId": settings.polygon_chain_id,
-        }
-    )
-    signed = await asyncio.to_thread(minter.sign_transaction, tx)
-    tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
-    receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        })
+        signed = await asyncio.to_thread(minter.sign_transaction, tx)
+        tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
+        receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
-    if receipt.status != 1:
-        raise RuntimeError(f"Transazione mintNFTWithSlots fallita: {tx_hash.hex()}")
+        if receipt.status != 1:
+            raise RuntimeError(f"Transazione mintNFTWithSlots fallita: {tx_hash.hex()}")
 
-    token_id = _extract_token_id_from_receipt(receipt)
-    logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d", token_id, len(slot_keys))
-    return token_id
+        token_id = _extract_token_id_from_receipt(receipt)
+        logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d", token_id, len(slot_keys))
+        return token_id
 
 
 async def update_token_uri(token_id: int, new_uri: str, new_ical_hash: str) -> None:
     """Aggiorna l'URI IPFS e l'hash iCal on-chain dopo il mint (PRD flusso 14-step).
     Chiamata dopo aver rigenerato i metadati con il token_id reale."""
-    w3 = _get_web3()
-    minter_key = settings.minter_private_key
-    # minter_private_key è una chiave hex RAW (non cifrata con AES), a differenza
-    # delle chiavi dei wallet soci che passano per get_account_from_encrypted.
-    minter = Account.from_key(minter_key)
+    async with _web3() as w3:
+        # minter_private_key è una chiave hex RAW (non cifrata con AES), a differenza
+        # delle chiavi dei wallet soci che passano per get_account_from_encrypted.
+        minter = Account.from_key(settings.minter_private_key)
+        contract = _contract(w3)
 
-    contract = w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
-    )
-    # 'pending' include le tx non ancora minate: evita riuso dello stesso nonce
-    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
-    gas_price = await w3.eth.gas_price
+        nonce = await w3.eth.get_transaction_count(minter.address, "pending")
+        gas_price = await w3.eth.gas_price
 
-    for fn_name, arg in [("updateTokenURI", new_uri), ("updateIcalHash", new_ical_hash)]:
-        fn = getattr(contract.functions, fn_name)(token_id, arg)
-        try:
-            gas = int((await fn.estimate_gas({"from": minter.address})) * 1.2)
-        except Exception:
-            gas = 100_000
-        tx = await fn.build_transaction({
-            "from": minter.address,
-            "nonce": nonce,
-            "gasPrice": gas_price,
-            "gas": gas,
-            "chainId": settings.polygon_chain_id,
-        })
-        signed = await asyncio.to_thread(minter.sign_transaction, tx)
-        tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
-        receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
-        if receipt.status != 1:
-            raise RuntimeError(f"{fn_name} fallita per token {token_id}: {tx_hash.hex()}")
-        nonce += 1  # incrementa nonce per la seconda tx nella stessa sessione
+        for fn_name, arg in [("updateTokenURI", new_uri), ("updateIcalHash", new_ical_hash)]:
+            fn = getattr(contract.functions, fn_name)(token_id, arg)
+            try:
+                gas = int((await fn.estimate_gas({"from": minter.address})) * 1.2)
+            except Exception:
+                gas = 100_000
+            tx = await fn.build_transaction({
+                "from": minter.address,
+                "nonce": nonce,
+                "gasPrice": gas_price,
+                "gas": gas,
+                "chainId": settings.polygon_chain_id,
+            })
+            signed = await asyncio.to_thread(minter.sign_transaction, tx)
+            tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
+            receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+            if receipt.status != 1:
+                raise RuntimeError(f"{fn_name} fallita per token {token_id}: {tx_hash.hex()}")
+            nonce += 1  # incrementa nonce per la seconda tx nella stessa sessione
 
-    logger.info("tokenURI e icalHash aggiornati on-chain per token %d", token_id)
+        logger.info("tokenURI e icalHash aggiornati on-chain per token %d", token_id)
+
+
+async def is_slot_booked(slot_key: str) -> bool:
+    """View on-chain: lo slotKey è già prenotato? (read-only)."""
+    async with _web3() as w3:
+        return bool(await _contract(w3).functions.isSlotBooked(slot_key).call())
+
+
+async def find_token_by_slots(owner_address: str, slot_keys: list[str]) -> int | None:
+    """
+    Recupero orfano: trova il token dell'owner i cui slotKey coincidono esattamente
+    con quelli dati. Usato quando il mint on-chain è avvenuto ma il checkpoint DB no.
+    """
+    target = set(slot_keys)
+    async with _web3() as w3:
+        contract = _contract(w3)
+        tokens = list(await contract.functions.getTokensByOwner(
+            Web3.to_checksum_address(owner_address)
+        ).call())
+        for tid in tokens:
+            keys = set(await contract.functions.getTokenSlotKeys(int(tid)).call())
+            if keys == target:
+                return int(tid)
+    return None
 
 
 async def get_tokens_by_owner(owner_address: str) -> list[int]:
-    w3 = _get_web3()
-    contract = w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
-    )
-    return list(await contract.functions.getTokensByOwner(
-        Web3.to_checksum_address(owner_address)
-    ).call())
+    async with _web3() as w3:
+        tokens = await _contract(w3).functions.getTokensByOwner(
+            Web3.to_checksum_address(owner_address)
+        ).call()
+        return list(tokens)
