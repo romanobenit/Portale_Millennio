@@ -81,29 +81,17 @@ async def _run_mint(acquisto_id: UUID) -> None:
                 fascia_conti[s.fascia] += 1
             fascia_prevalente = max(fascia_conti, key=fascia_conti.get) if slots else "notte"
 
-            from modules.nft.blockchain import mint_nft_with_slots, update_token_uri
+            from modules.nft.blockchain import (
+                find_token_by_slots,
+                is_slot_booked,
+                mint_nft_with_slots,
+                update_token_uri,
+            )
 
             # CHECKPOINT idempotenza: minta on-chain SOLO se non già fatto.
             # Se un tentativo precedente ha mintato ma è poi fallito (update_token_uri,
             # IPFS, commit), token_id è già persistito → si riprende senza ri-mintare.
             if acquisto.token_id is None:
-                ical_pre = genera_ical_content(
-                    slots, 0, tessera_id, settings.contract_address_palasirion_nft,
-                    ore_per_slot=ore_per_slot,
-                )
-                ical_hash_pre = calcola_sha256(ical_pre)
-                metadati_pre = costruisci_metadati_nft(
-                    slots_count=len(slots),
-                    data_primo_slot=data_primo,
-                    fascia_prevalente=fascia_prevalente,
-                    ore_totali=ore_totali,
-                    importo_eur=float(acquisto.importo_eur),
-                    ical_content=ical_pre,
-                    ical_sha256=ical_hash_pre,
-                    tessera_id=tessera_id,
-                )
-                ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
-
                 # slotKey per-ora "{data}_{fascia}_{ora}" → registrati on-chain:
                 # il contratto reverta se una qualsiasi ora è già prenotata (anti double-sell).
                 slot_keys = [
@@ -111,11 +99,43 @@ async def _run_mint(acquisto_id: UUID) -> None:
                     for slot in slots
                     for ora in sorted(ore_per_slot.get(str(slot.id), []))
                 ]
-                token_id = await mint_nft_with_slots(
-                    wallet.wallet_address, ipfs_uri_temp, slot_keys, ical_hash_pre,
-                )
-                # Persisti SUBITO il token_id in un commit dedicato: rende il mint
-                # idempotente rispetto ai retry (niente doppio mint on-chain).
+
+                # RECUPERO ORFANO: se un tentativo precedente ha mintato on-chain ma il
+                # checkpoint DB è fallito (es. crash tra mint e commit), gli slot risultano
+                # già prenotati. Non ri-mintare: recupera il token_id dello stesso wallet.
+                if slot_keys and await is_slot_booked(slot_keys[0]):
+                    token_id = await find_token_by_slots(wallet.wallet_address, slot_keys)
+                    if token_id is None:
+                        raise RuntimeError(
+                            f"Slot {slot_keys[0]} gia prenotati on-chain da un altro wallet: "
+                            f"acquisto {acquisto_id} non mintabile (possibile double-sell)"
+                        )
+                    task_logger.warning(
+                        "Recupero orfano: token %s gia on-chain per acquisto %s — nessun re-mint.",
+                        token_id, acquisto_id,
+                    )
+                else:
+                    ical_pre = genera_ical_content(
+                        slots, 0, tessera_id, settings.contract_address_palasirion_nft,
+                        ore_per_slot=ore_per_slot,
+                    )
+                    ical_hash_pre = calcola_sha256(ical_pre)
+                    metadati_pre = costruisci_metadati_nft(
+                        slots_count=len(slots),
+                        data_primo_slot=data_primo,
+                        fascia_prevalente=fascia_prevalente,
+                        ore_totali=ore_totali,
+                        importo_eur=float(acquisto.importo_eur),
+                        ical_content=ical_pre,
+                        ical_sha256=ical_hash_pre,
+                        tessera_id=tessera_id,
+                    )
+                    ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
+                    token_id = await mint_nft_with_slots(
+                        wallet.wallet_address, ipfs_uri_temp, slot_keys, ical_hash_pre,
+                    )
+
+                # Persisti SUBITO il token_id (checkpoint): idempotenza retry.
                 acquisto.token_id = token_id
                 acquisto.contract_address = settings.contract_address_palasirion_nft
                 await db.commit()
