@@ -304,7 +304,7 @@ async def test_run_mint_idempotente_salta_se_gia_mintato():
          patch("tasks.mint.calcola_sha256", return_value="hash"), \
          patch("tasks.mint.costruisci_metadati_nft", return_value={}), \
          patch("tasks.mint.upload_json_to_ipfs", new_callable=AsyncMock, return_value="ipfs://x"), \
-         patch("modules.nft.blockchain.mint_nft", new_callable=AsyncMock) as m_mint, \
+         patch("modules.nft.blockchain.mint_nft_with_slots", new_callable=AsyncMock) as m_mint, \
          patch("modules.nft.blockchain.update_token_uri", new_callable=AsyncMock) as m_upd:
         await _run_mint(acquisto_id)
 

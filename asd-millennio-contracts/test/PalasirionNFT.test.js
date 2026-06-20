@@ -48,6 +48,13 @@ describe("PalasirionNFT", function () {
         contract.connect(user1).addMinter(user2.address)
       ).to.be.revertedWithCustomError(contract, "OwnableUnauthorizedAccount");
     });
+
+    it("non-owner non può rimuovere minter", async function () {
+      await contract.connect(owner).addMinter(minter.address);
+      await expect(
+        contract.connect(user1).removeMinter(minter.address)
+      ).to.be.revertedWithCustomError(contract, "OwnableUnauthorizedAccount");
+    });
   });
 
   // ─── Minting ─────────────────────────────────────────────────────────────────
@@ -128,6 +135,123 @@ describe("PalasirionNFT", function () {
       await contract.connect(owner).mintNFTWithSlot(user1.address, uri, slotKey, icalHash);
       expect(await contract.getTokenSlotKey(0)).to.equal(slotKey);
       expect(await contract.getTokenIcalHash(0)).to.equal(icalHash);
+    });
+
+    it("non-minter non può mintare con slot", async function () {
+      await expect(
+        contract.connect(user1).mintNFTWithSlot(user2.address, uri, slotKey, icalHash)
+      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+    });
+  });
+
+  // ─── mintNFTWithSlots (multi-ora) ────────────────────────────────────────────
+
+  describe("mintNFTWithSlots", function () {
+    const slotKeys = [
+      "2027-03-02_mattina_08",
+      "2027-03-02_mattina_09",
+      "2027-03-02_mattina_10",
+    ];
+    const icalHash = "sha256_multi";
+    const uri = "ipfs://QmMulti";
+
+    it("minta un NFT prenotando tutte le ore", async function () {
+      await contract.connect(owner).mintNFTWithSlots(user1.address, uri, slotKeys, icalHash);
+      expect(await contract.balanceOf(user1.address)).to.equal(1);
+      for (const k of slotKeys) {
+        expect(await contract.isSlotBooked(k)).to.be.true;
+      }
+    });
+
+    it("emette un evento SlotBooked per ogni ora", async function () {
+      const tx = await contract.connect(owner).mintNFTWithSlots(user1.address, uri, slotKeys, icalHash);
+      const receipt = await tx.wait();
+      const events = receipt.logs.filter(
+        (log) => log.fragment && log.fragment.name === "SlotBooked"
+      );
+      expect(events.length).to.equal(slotKeys.length);
+      expect(events.map((e) => e.args.slotKey)).to.deep.equal(slotKeys);
+    });
+
+    it("getTokenSlotKeys restituisce l'array completo", async function () {
+      await contract.connect(owner).mintNFTWithSlots(user1.address, uri, slotKeys, icalHash);
+      expect(await contract.getTokenSlotKeys(0)).to.deep.equal(slotKeys);
+    });
+
+    it("reverta se anche una sola ora è già prenotata", async function () {
+      await contract.connect(owner).mintNFTWithSlot(user1.address, uri, "2027-03-02_mattina_09", icalHash);
+      await expect(
+        contract.connect(owner).mintNFTWithSlots(user2.address, uri, slotKeys, icalHash)
+      ).to.be.revertedWith("PalasirionNFT: slot gia prenotato");
+    });
+
+    it("la revert non lascia prenotazioni parziali (atomicità)", async function () {
+      // 09 già preso → il mint di [08, 09, 10] deve revertare e NON prenotare 08 nè 10
+      await contract.connect(owner).mintNFTWithSlot(user1.address, uri, "2027-03-02_mattina_09", icalHash);
+      await expect(
+        contract.connect(owner).mintNFTWithSlots(user2.address, uri, slotKeys, icalHash)
+      ).to.be.reverted;
+      expect(await contract.isSlotBooked("2027-03-02_mattina_08")).to.be.false;
+      expect(await contract.isSlotBooked("2027-03-02_mattina_10")).to.be.false;
+    });
+
+    it("reverta con array di slot vuoto", async function () {
+      await expect(
+        contract.connect(owner).mintNFTWithSlots(user1.address, uri, [], icalHash)
+      ).to.be.revertedWith("PalasirionNFT: nessuno slot");
+    });
+
+    it("non-minter non può mintare", async function () {
+      await expect(
+        contract.connect(user1).mintNFTWithSlots(user2.address, uri, slotKeys, icalHash)
+      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+    });
+  });
+
+  // ─── updateTokenURI / updateIcalHash ─────────────────────────────────────────
+
+  describe("updateTokenURI / updateIcalHash", function () {
+    const uri = "ipfs://QmInitial";
+    const newUri = "ipfs://QmUpdated";
+    const icalHash = "sha256_init";
+    const newIcalHash = "sha256_updated";
+
+    beforeEach(async function () {
+      await contract.connect(owner).mintNFT(user1.address, uri);  // token 0
+    });
+
+    it("updateTokenURI aggiorna l'URI on-chain", async function () {
+      await contract.connect(owner).updateTokenURI(0, newUri);
+      expect(await contract.tokenURI(0)).to.equal(newUri);
+    });
+
+    it("updateTokenURI reverta su token inesistente", async function () {
+      await expect(
+        contract.connect(owner).updateTokenURI(999, newUri)
+      ).to.be.revertedWith("PalasirionNFT: token inesistente");
+    });
+
+    it("updateTokenURI solo minter", async function () {
+      await expect(
+        contract.connect(user1).updateTokenURI(0, newUri)
+      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+    });
+
+    it("updateIcalHash aggiorna l'hash on-chain", async function () {
+      await contract.connect(owner).updateIcalHash(0, newIcalHash);
+      expect(await contract.getTokenIcalHash(0)).to.equal(newIcalHash);
+    });
+
+    it("updateIcalHash reverta su token inesistente", async function () {
+      await expect(
+        contract.connect(owner).updateIcalHash(999, newIcalHash)
+      ).to.be.revertedWith("PalasirionNFT: token inesistente");
+    });
+
+    it("updateIcalHash solo minter", async function () {
+      await expect(
+        contract.connect(user1).updateIcalHash(0, newIcalHash)
+      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
     });
   });
 

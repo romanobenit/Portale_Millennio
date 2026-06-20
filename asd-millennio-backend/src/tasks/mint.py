@@ -81,7 +81,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
                 fascia_conti[s.fascia] += 1
             fascia_prevalente = max(fascia_conti, key=fascia_conti.get) if slots else "notte"
 
-            from modules.nft.blockchain import mint_nft, update_token_uri
+            from modules.nft.blockchain import mint_nft_with_slots, update_token_uri
 
             # CHECKPOINT idempotenza: minta on-chain SOLO se non già fatto.
             # Se un tentativo precedente ha mintato ma è poi fallito (update_token_uri,
@@ -91,6 +91,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
                     slots, 0, tessera_id, settings.contract_address_palasirion_nft,
                     ore_per_slot=ore_per_slot,
                 )
+                ical_hash_pre = calcola_sha256(ical_pre)
                 metadati_pre = costruisci_metadati_nft(
                     slots_count=len(slots),
                     data_primo_slot=data_primo,
@@ -98,13 +99,20 @@ async def _run_mint(acquisto_id: UUID) -> None:
                     ore_totali=ore_totali,
                     importo_eur=float(acquisto.importo_eur),
                     ical_content=ical_pre,
-                    ical_sha256=calcola_sha256(ical_pre),
+                    ical_sha256=ical_hash_pre,
                     tessera_id=tessera_id,
                 )
                 ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
 
-                token_id = await mint_nft(
-                    wallet.wallet_address, ipfs_uri_temp, wallet.encrypted_private_key
+                # slotKey per-ora "{data}_{fascia}_{ora}" → registrati on-chain:
+                # il contratto reverta se una qualsiasi ora è già prenotata (anti double-sell).
+                slot_keys = [
+                    f"{slot.data.isoformat()}_{slot.fascia}_{ora:02d}"
+                    for slot in slots
+                    for ora in sorted(ore_per_slot.get(str(slot.id), []))
+                ]
+                token_id = await mint_nft_with_slots(
+                    wallet.wallet_address, ipfs_uri_temp, slot_keys, ical_hash_pre,
                 )
                 # Persisti SUBITO il token_id in un commit dedicato: rende il mint
                 # idempotente rispetto ai retry (niente doppio mint on-chain).

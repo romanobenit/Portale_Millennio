@@ -363,19 +363,34 @@ class NFTService:
                 checked_at=datetime.now(timezone.utc),
             )
 
-        slots_link = await self.db.execute(
+        # Carica i link (con le ore acquistate) e gli slot collegati
+        links = list((await self.db.execute(
             select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto.id)
-        )
-        slot_ids = [ln.slot_calendario_id for ln in slots_link.scalars().all()]
-        slots = list((await self.db.execute(
-            select(SlotCalendario).where(SlotCalendario.id.in_(slot_ids))
         )).scalars().all())
+        slot_ids = [ln.slot_calendario_id for ln in links]
+        slots_map = {
+            s.id: s for s in (await self.db.execute(
+                select(SlotCalendario).where(SlotCalendario.id.in_(slot_ids))
+            )).scalars().all()
+        }
 
-        data_parte, fascia_parte = slot_key.split("_", 1) if "_" in slot_key else (slot_key, "")
-        slot_match = next(
-            (s for s in slots if str(s.data) == data_parte and s.fascia == fascia_parte),
-            None,
-        )
+        # slot_key per-ora "{data}_{fascia}_{ora}" (legacy: "{data}_{fascia}" senza ora).
+        # data usa '-' come separatore, fascia non contiene '_': split sicuro.
+        parti = slot_key.split("_")
+        data_parte = parti[0] if parti else ""
+        fascia_parte = parti[1] if len(parti) > 1 else ""
+        ora_parte = int(parti[2]) if len(parti) > 2 and parti[2].isdigit() else None
+
+        slot_match = None
+        for ln in links:
+            s = slots_map.get(ln.slot_calendario_id)
+            if not s or str(s.data) != data_parte or s.fascia != fascia_parte:
+                continue
+            # Se l'ora è specificata, deve essere tra quelle effettivamente acquistate
+            if ora_parte is not None and ora_parte not in set(ln.ore_acquistate or []):
+                continue
+            slot_match = s
+            break
 
         esito = "valido" if slot_match else "slot_errato"
         log = AccessoLog(
@@ -391,7 +406,10 @@ class NFTService:
         return NFTVerificaResponse(
             valid=esito == "valido",
             socio=str(acquisto.socio_id),
-            slot={"data": str(slot_match.data), "fascia": slot_match.fascia} if slot_match else None,
+            slot=(
+                {"data": str(slot_match.data), "fascia": slot_match.fascia, "ora": ora_parte}
+                if slot_match else None
+            ),
             checked_at=datetime.now(timezone.utc),
         )
 

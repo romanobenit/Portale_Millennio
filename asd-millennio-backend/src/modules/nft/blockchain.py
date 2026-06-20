@@ -20,6 +20,18 @@ PALASIRION_NFT_ABI = [
         "type": "function",
     },
     {
+        "inputs": [
+            {"name": "to", "type": "address"},
+            {"name": "uri", "type": "string"},
+            {"name": "slotKeys", "type": "string[]"},
+            {"name": "icalHash", "type": "string"},
+        ],
+        "name": "mintNFTWithSlots",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
         "inputs": [{"name": "tokenId", "type": "uint256"}, {"name": "newUri", "type": "string"}],
         "name": "updateTokenURI",
         "outputs": [],
@@ -75,6 +87,22 @@ def _get_web3() -> AsyncWeb3:
     return w3
 
 
+def _extract_token_id_from_receipt(receipt) -> int:
+    """
+    Estrae il tokenId dall'evento Transfer del receipt.
+    Più sicuro di getTokensByOwner[-1], vulnerabile a race condition con mint concorrenti.
+    """
+    transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)").hex()
+    for log_entry in receipt.logs:
+        if (
+            log_entry["address"].lower() == settings.contract_address_palasirion_nft.lower()
+            and len(log_entry["topics"]) == 4
+            and log_entry["topics"][0].hex() == transfer_topic
+        ):
+            return int(log_entry["topics"][3].hex(), 16)
+    raise RuntimeError("Token ID non trovato nei log della transazione")
+
+
 async def mint_nft(recipient_address: str, token_uri: str, minter_encrypted_key: str) -> int:
     """Minta un NFT e restituisce il token_id assegnato on-chain."""
     w3 = _get_web3()
@@ -120,21 +148,63 @@ async def mint_nft(recipient_address: str, token_uri: str, minter_encrypted_key:
     if receipt.status != 1:
         raise RuntimeError(f"Transazione fallita: {tx_hash.hex()}")
 
-    # Estrae il tokenId dall'evento Transfer emesso nel receipt.
-    # Più sicuro di getTokensByOwner[-1] che è vulnerabile a race condition
-    # in caso di mint concorrenti allo stesso indirizzo.
-    transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)").hex()
-    for log_entry in receipt.logs:
-        if (
-            log_entry["address"].lower() == settings.contract_address_palasirion_nft.lower()
-            and len(log_entry["topics"]) == 4
-            and log_entry["topics"][0].hex() == transfer_topic
-        ):
-            token_id = int(log_entry["topics"][3].hex(), 16)
-            logger.info("Token ID estratto dall'evento Transfer: %d", token_id)
-            return token_id
+    token_id = _extract_token_id_from_receipt(receipt)
+    logger.info("Token ID estratto dall'evento Transfer: %d", token_id)
+    return token_id
 
-    raise RuntimeError(f"Token ID non trovato nei log della transazione {tx_hash.hex()}")
+
+async def mint_nft_with_slots(
+    recipient_address: str,
+    token_uri: str,
+    slot_keys: list[str],
+    ical_hash: str,
+) -> int:
+    """
+    Minta un NFT prenotando PIÙ slot per-ora (anti double-sell on-chain).
+    Firmata dal MINTER del contratto (owner ASD, chiave RAW come update_token_uri),
+    NON dal wallet del socio che non è autorizzato a mintare; il token è emesso
+    verso il wallet custodiale del socio. Reverta on-chain se un slotKey è già preso.
+    """
+    w3 = _get_web3()
+    minter = Account.from_key(settings.minter_private_key)
+
+    contract = w3.eth.contract(
+        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
+        abi=PALASIRION_NFT_ABI,
+    )
+
+    nonce = await w3.eth.get_transaction_count(minter.address, "pending")
+    gas_price = await w3.eth.gas_price
+
+    mint_fn = contract.functions.mintNFTWithSlots(
+        Web3.to_checksum_address(recipient_address), token_uri, slot_keys, ical_hash
+    )
+    try:
+        estimated_gas = await mint_fn.estimate_gas({"from": minter.address})
+        gas_limit = int(estimated_gas * 1.2)
+    except Exception as gas_err:
+        logger.warning("Gas estimation fallita (mintNFTWithSlots), fallback: %s", gas_err)
+        gas_limit = 250_000 + 70_000 * max(1, len(slot_keys))
+
+    tx = await mint_fn.build_transaction(
+        {
+            "from": minter.address,
+            "nonce": nonce,
+            "gasPrice": gas_price,
+            "gas": gas_limit,
+            "chainId": settings.polygon_chain_id,
+        }
+    )
+    signed = await asyncio.to_thread(minter.sign_transaction, tx)
+    tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
+    receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+
+    if receipt.status != 1:
+        raise RuntimeError(f"Transazione mintNFTWithSlots fallita: {tx_hash.hex()}")
+
+    token_id = _extract_token_id_from_receipt(receipt)
+    logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d", token_id, len(slot_keys))
+    return token_id
 
 
 async def update_token_uri(token_id: int, new_uri: str, new_ical_hash: str) -> None:
