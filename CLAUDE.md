@@ -9,16 +9,16 @@
 
 Stai lavorando all'MVP della piattaforma digitale dell'**ASD Millennio**, un'associazione
 sportiva dilettantistica (volley, badminton, kung fu, pickleball) che gestisce l'impianto
-**Palasirion**.
+**Palasirio**.
 
 **Documento di riferimento principale:** PRD v1.1 (ASD Millennio — Piattaforma di Gestione
 Integrata). Ogni decisione tecnica deve essere coerente con quel documento.
 
 **Scope dell'MVP (Release 1 — mesi 1–6):**
 - M01 — Tesseramento e gestione soci
-- M02 — Calendario e prenotazione Palasirion
+- M02 — Calendario e prenotazione Palasirio
 - M03 — Autenticazione e IAM
-- M04-NFT — Raccolta fondi Palasirion (NFT ERC-721 con iCal + Stripe)
+- M04-NFT — Raccolta fondi Palasirio (NFT ERC-721 con iCal + Stripe)
 
 **Fuori scope per ora — NON implementare:**
 - Sistema Flussocrazia Civica (Tornesi, NFT fondativi, fondo Bitcoin, socio-flussi)
@@ -182,7 +182,7 @@ Implementa per primo. Tutto il resto dipende da questo.
 |---|---|
 | `socio` | Self-service: profilo, tessera, acquisto NFT (se tessera attiva) |
 | `allenatore` | Presenze, calendario, comunicazioni atleti |
-| `staff` | Tesseramento, registro NFT, verifica accessi Palasirion |
+| `staff` | Tesseramento, registro NFT, verifica accessi Palasirio |
 | `dirigenza` | Report, dashboard fundraising, pricing, rendiconto, approvazioni |
 | `pubblico` | Solo lettura pagine pubbliche |
 
@@ -242,7 +242,7 @@ updated_at        TIMESTAMPTZ DEFAULT now()
   dalla data di emissione. Anno sportivo corrente: `2026-2027` → scadenza `2027-06-30`.
   Al rinnovo, emettere nuova tessera per anno `2027-2028` → scadenza `2028-06-30`.
 - Workflow emissione: `bozza → in_attesa_pagamento → attiva`
-- Solo soci con tessera `attiva` possono acquistare NFT Palasirion
+- Solo soci con tessera `attiva` possono acquistare NFT Palasirio
 - Tessera digitale PDF (PRD §RF-M01-002): generata automaticamente all'emissione,
   deve contenere un QR code che punta a `GET /api/v1/tessere/{id}/verifica` (endpoint pubblico).
   Il PDF viene salvato su storage e il link aggiornato in `pdf_url`.
@@ -271,9 +271,9 @@ revocato_at       TIMESTAMPTZ                  -- null se attivo
 
 ---
 
-### M02 — Calendario e Palasirion
+### M02 — Calendario e Palasirio
 
-**Periodo di vendita NFT Palasirion:** `2027-01-01` → `2042-12-31` (env: `CALENDARIO_INIZIO` / `CALENDARIO_FINE`)
+**Periodo di vendita NFT Palasirio:** `2027-01-01` → `2042-12-31` (env: `CALENDARIO_INIZIO` / `CALENDARIO_FINE`)
 
 **Fasce orarie disponibili per la vendita NFT:**
 - Giorni: **Lunedì, Martedì, Mercoledì, Giovedì, Venerdì**
@@ -411,7 +411,7 @@ GET /api/v1/calendario/riepilogo-selezione          → totale e dettaglio ore s
 
 ---
 
-### M04-NFT — Raccolta fondi Palasirion
+### M04-NFT — Raccolta fondi Palasirio
 
 Questo è il modulo più critico dell'MVP. Segui il flusso end-to-end con precisione.
 
@@ -459,12 +459,12 @@ Un VEVENT per ogni **ora** acquistata (non per fascia):
 ```
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//ASD Millennio//Palasirion//IT
+PRODID:-//ASD Millennio//Palasirio//IT
 BEGIN:VEVENT
 UID:{uuid-univoco}@millennioasd.com
 DTSTART:{YYYYMMDD}T{HH0000}
 DTEND:{YYYYMMDD}T{HH+10000}
-SUMMARY:Diritto d'uso Palasirion — {fascia} — ASD Millennio
+SUMMARY:Diritto d'uso Palasirio — {fascia} — ASD Millennio
 DESCRIPTION:Token ID: {token_id} | Socio: {tessera_id} | Verifica: polygonscan.com/token/{contract}/{token_id}
 STATUS:CONFIRMED
 END:VEVENT
@@ -478,8 +478,8 @@ Genera SHA-256 del file iCal completo → incluso nei metadati NFT per verifica 
 
 ```json
 {
-  "name": "Diritto d'uso Palasirion — {N} ore — ASD Millennio",
-  "description": "Questo token NON è uno strumento finanziario ai sensi della Direttiva MiFID II. Rappresenta esclusivamente il diritto d'uso del Palasirion per le ore specificate. Non garantisce rendimenti economici.",
+  "name": "Diritto d'uso Palasirio — {N} ore — ASD Millennio",
+  "description": "Questo token NON è uno strumento finanziario ai sensi della Direttiva MiFID II. Rappresenta esclusivamente il diritto d'uso del Palasirio per le ore specificate. Non garantisce rendimenti economici.",
   "attributes": [
     { "trait_type": "Ore totali", "value": "{N}" },
     { "trait_type": "Data primo slot", "value": "{YYYY-MM-DD}" },
@@ -493,7 +493,7 @@ Genera SHA-256 del file iCal completo → incluso nei metadati NFT per verifica 
 }
 ```
 
-#### 4.4 Smart contract — PalasirionNFT.sol
+#### 4.4 Smart contract — PalasirioNFT.sol
 
 Usa OpenZeppelin come base. Requisiti obbligatori:
 
@@ -586,7 +586,7 @@ Infografica in tempo reale (aggiornamento < 5 secondi dopo ogni pagamento):
 **Sezione 2 — Andamento vendite:**
 - Grafico a barre: incassi degli ultimi 30 giorni
 - Top 5 fasce più vendute (data + fascia + importo)
-- Mappa calendario occupazione Palasirion (slot NFT in verde, liberi in blu)
+- Mappa calendario occupazione Palasirio (slot NFT in verde, liberi in blu)
 
 **Sezione 3 — Export:**
 - CSV/PDF storico completo: socio (pseudonimizzato), ore, importo, data, Token ID
@@ -625,7 +625,7 @@ GET  /api/v1/dirigenza/rendiconto?anno=2026   → dati rendiconto annuale [Requi
 GET  /api/v1/dirigenza/rendiconto/pdf?anno=2026 → PDF scaricabile
 ```
 
-#### 4.11 Verifica accesso al Palasirion (staff)
+#### 4.11 Verifica accesso al Palasirio (staff)
 
 **Entità DB — `AccessoLog`** (audit ISO 27001):
 ```
@@ -715,7 +715,7 @@ STRIPE_PUBLISHABLE_KEY=
 # Blockchain
 POLYGON_RPC_URL=
 POLYGON_CHAIN_ID=                  # 80002 testnet Amoy, 137 mainnet
-CONTRACT_ADDRESS_PALASIRION_NFT=
+CONTRACT_ADDRESS_PALASIRIO_NFT=
 MINTER_PRIVATE_KEY=                # mai committare questo valore
 
 # IPFS / Pinata
@@ -742,7 +742,7 @@ ANNO_SPORTIVO_CORRENTE=2026-2027
 TESSERA_SCADENZA_MESE=6
 TESSERA_SCADENZA_GIORNO=30
 
-# Periodo vendita slot Palasirion (inclusivo)
+# Periodo vendita slot Palasirio (inclusivo)
 CALENDARIO_INIZIO=2027-01-01
 CALENDARIO_FINE=2042-12-31
 
@@ -851,11 +851,11 @@ lib/
 ### asd-millennio-contracts/
 ```
 contracts/
-  PalasirionNFT.sol
+  PalasirioNFT.sol
   interfaces/
-    IPalasirionNFT.sol
+    IPalasirioNFT.sol
 test/
-  PalasirionNFT.test.js
+  PalasirioNFT.test.js
 scripts/
   deploy.js
   verify.js
@@ -867,7 +867,7 @@ hardhat.config.js
 
 ## 9. Flussi critici — non improvvisare
 
-1. **Acquisto NFT Palasirion** → Sezione 4.1 (flusso end-to-end, max 60 secondi)
+1. **Acquisto NFT Palasirio** → Sezione 4.1 (flusso end-to-end, max 60 secondi)
 2. **Verifica pagamento Stripe** → doppia verifica webhook + API retrieve (Sezione 4.7)
 3. **Lock ore calendario** → lock ottimistico pre-pagamento, rilascio a 30min (Sezione 4.1)
 4. **Pricing dinamico** → sempre calcolato server-side, mai accettato dal client (Sezione M02)

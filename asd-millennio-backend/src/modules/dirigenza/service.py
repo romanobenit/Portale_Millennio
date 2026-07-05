@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import and_, func, select
@@ -31,7 +31,7 @@ settings = get_settings()
 FASCE = ("notte", "mattina", "pomeriggio")
 ORE_TOTALI_FASCIA = {"notte": 8, "mattina": 5, "pomeriggio": 2}
 
-# Periodo di vendita Palasirion — letto da env
+# Periodo di vendita Palasirio — letto da env
 PERIODO_INIZIO = date.fromisoformat(settings.calendario_inizio)  # 2027-01-01
 PERIODO_FINE   = date.fromisoformat(settings.calendario_fine)    # 2042-12-31
 
@@ -156,7 +156,8 @@ class DirigenzaService:
             for f in FASCE
         }
 
-        # Incassi ultimi 30 giorni
+        # Incassi ultimi 30 giorni (cutoff calcolato in Python: evita CAST a NullType)
+        cutoff_30gg = datetime.now(timezone.utc) - timedelta(days=30)
         result_30 = await self.db.execute(
             select(
                 func.date(AcquistoNFT.created_at).label("data"),
@@ -164,7 +165,7 @@ class DirigenzaService:
             ).where(
                 and_(
                     AcquistoNFT.stato.in_(["pagato", "mintato"]),
-                    AcquistoNFT.created_at >= func.now() - func.cast("30 days", type_=None),
+                    AcquistoNFT.created_at >= cutoff_30gg,
                 )
             ).group_by(func.date(AcquistoNFT.created_at))
             .order_by(func.date(AcquistoNFT.created_at))

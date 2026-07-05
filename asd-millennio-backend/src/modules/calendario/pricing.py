@@ -1,5 +1,5 @@
 """
-Motore di pricing dinamico per gli slot Palasirion.
+Motore di pricing dinamico per gli slot Palasirio.
 
 Formula: prezzo_ora = tariffa_base × leva_data × leva_scarsita × (1 - sconto_promo / 100)
 

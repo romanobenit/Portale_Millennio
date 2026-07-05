@@ -19,7 +19,7 @@ def genera_ical_content(
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//ASD Millennio//Palasirion//IT",
+        "PRODID:-//ASD Millennio//Palasirio//IT",
     ]
 
     for slot in slots:
@@ -42,7 +42,7 @@ def genera_ical_content(
                 f"UID:{uid}",
                 f"DTSTART:{dt_inizio.strftime('%Y%m%dT%H%M%S')}",
                 f"DTEND:{dt_fine.strftime('%Y%m%dT%H%M%S')}",
-                f"SUMMARY:Diritto d'uso Palasirion — {fascia} — ASD Millennio",
+                f"SUMMARY:Diritto d'uso Palasirio — {fascia} — ASD Millennio",
                 f"DESCRIPTION:Token ID: {token_id} | Socio: {tessera_id} | "
                 f"Verifica: polygonscan.com/token/{contract_address}/{token_id}",
                 "STATUS:CONFIRMED",

@@ -33,7 +33,7 @@ function SuccessoContent() {
         </div>
         <p className="text-xs text-gray-500 border-t pt-3">
           Questo token NON è uno strumento finanziario ai sensi della Direttiva MiFID II.
-          Rappresenta esclusivamente il diritto d&apos;uso del Palasirion per le fasce orarie specificate.
+          Rappresenta esclusivamente il diritto d&apos;uso del Palasirio per le fasce orarie specificate.
         </p>
       </div>
     </Card>

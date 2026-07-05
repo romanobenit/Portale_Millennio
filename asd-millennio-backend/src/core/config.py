@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Blockchain
     polygon_rpc_url: str = ""
     polygon_chain_id: int = 80002
-    contract_address_palasirion_nft: str = ""
+    contract_address_palasirio_nft: str = ""
     minter_private_key: str = ""
 
     # IPFS / Pinata
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     tessera_scadenza_mese: int = 6
     tessera_scadenza_giorno: int = 30
 
-    # Periodo di vendita slot Palasirion (inclusivo)
+    # Periodo di vendita slot Palasirio (inclusivo)
     calendario_inizio: str = "2027-01-01"
     calendario_fine: str = "2042-12-31"
 

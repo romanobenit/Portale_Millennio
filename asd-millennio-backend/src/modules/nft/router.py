@@ -44,7 +44,7 @@ async def verifica_accesso_nft(
     user: dict = RequireStaff,
     db: AsyncSession = Depends(get_db),
 ):
-    """Verifica accesso al Palasirion tramite QR code — solo staff."""
+    """Verifica accesso al Palasirio tramite QR code — solo staff."""
     from modules.soci.repository import SociRepository
 
     verificatore = await SociRepository(db).get_by_keycloak_id(user["sub"])

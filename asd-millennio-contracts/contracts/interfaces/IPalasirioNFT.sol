@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IPalasirionNFT {
+interface IPalasirioNFT {
     event SlotBooked(
         uint256 indexed tokenId,
         address indexed member,

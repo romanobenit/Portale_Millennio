@@ -1,0 +1,24 @@
+# Dipendenze e build locali: mai copiarle nell'immagine.
+# Vengono reinstallate pulite da `npm ci` nello stage `deps` (Linux/musl).
+# Copiare il node_modules di Windows rompe SWC e il caricamento di next.config.js.
+node_modules
+.next
+out
+
+# Git e metadati
+.git
+.gitignore
+
+# Log e cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# File Docker stessi
+Dockerfile
+.dockerignore
+
+# NB: .env.local NON va escluso — Next inlinea i NEXT_PUBLIC_* a build-time da
+# questo file (URL Keycloak, API, ecc.). Escluderlo rompe l'auth lato client.
+# Finisce solo nello stage builder, non nell'immagine finale (runner copia solo
+# .next/standalone + .next/static + public).

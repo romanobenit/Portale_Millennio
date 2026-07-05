@@ -6,7 +6,7 @@ Limiti applicati (per IP remoto, salvo diversa indicazione):
   - Endpoint PDF tessera (heavy): 10 req/min
   - Webhook Stripe: 200 req/min  (Stripe può ritentare fino a 72h)
   - Acquisto NFT: 10 req/min per utente
-  - Verifica QR Palasirion: 30 req/min
+  - Verifica QR Palasirio: 30 req/min
 
 Lo storage Redis è condiviso con il broker Celery (DB 0).
 In caso di Redis non raggiungibile, slowapi degrada silenziosamente

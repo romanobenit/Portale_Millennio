@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
   images: {
+    // 'sharp' non è installato: senza ottimizzatore le immagini vengono servite
+    // così come sono (restano comunque lazy-load + dimensioni esplicite, niente CLS).
+    // Per riattivare l'ottimizzazione completa: installare 'sharp' e rimuovere questa riga.
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "gateway.pinata.cloud" },
       { protocol: "https", hostname: "ipfs.io" },
@@ -41,7 +45,8 @@ const nextConfig = {
               "img-src 'self' data: https://gateway.pinata.cloud https://ipfs.io",
               // Stripe JS
               "script-src 'self' 'unsafe-inline' https://js.stripe.com",
-              "frame-src https://js.stripe.com",
+              // facebook.com: Page Plugin (feed social), caricato solo dopo consenso utente
+              "frame-src https://js.stripe.com https://www.facebook.com",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self'",
             ].join("; "),

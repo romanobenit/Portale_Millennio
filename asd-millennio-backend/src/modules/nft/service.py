@@ -126,7 +126,7 @@ class NFTService:
                         "currency": "eur",
                         "unit_amount": unit_amount_cents,
                         "product_data": {
-                            "name": f"Diritto d'uso Palasirion — {n_slot} slot",
+                            "name": f"Diritto d'uso Palasirio — {n_slot} slot",
                         },
                     },
                     "quantity": 1,
@@ -350,7 +350,7 @@ class NFTService:
         result = await self.db.execute(
             select(AcquistoNFT).where(
                 AcquistoNFT.token_id == token_id,
-                AcquistoNFT.contract_address == settings.contract_address_palasirion_nft,
+                AcquistoNFT.contract_address == settings.contract_address_palasirio_nft,
             )
         )
         acquisto = result.scalar_one_or_none()

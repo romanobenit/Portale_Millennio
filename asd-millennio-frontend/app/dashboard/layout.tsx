@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getKeycloak, initKeycloakOnce } from "@/lib/auth/keycloak";
+import { getKeycloak, initKeycloakOnce, isDirigenza } from "@/lib/auth/keycloak";
 import { setAuthToken } from "@/lib/api/client";
 import { clsx } from "clsx";
 
@@ -18,6 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [nomeUtente, setNomeUtente] = useState("");
   const [authReady, setAuthReady] = useState(false);
+  const [isDir, setIsDir] = useState(false);
 
   useEffect(() => {
     // initKeycloakOnce usa un flag modulo-level: sicuro con StrictMode (doppio mount)
@@ -40,6 +41,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               .then((refreshed) => { if (refreshed && kc.token) setAuthToken(kc.token); })
               .catch(() => kc.login());
           };
+          setIsDir(isDirigenza(kc));
           setAuthReady(true);
         } else {
           getKeycloak().login({ redirectUri: window.location.href });
@@ -70,6 +72,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Link href="/" className="text-xl font-bold">ASD Millennio</Link>
         <div className="flex items-center gap-4">
           {nomeUtente && <span className="text-sm text-blue-100">Ciao, {nomeUtente}</span>}
+          {isDir && (
+            <Link
+              href="/dirigenza"
+              className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25 transition-colors"
+            >
+              Area dirigenza →
+            </Link>
+          )}
+          <Link
+            href="/"
+            className="text-sm text-blue-200 hover:text-white transition-colors"
+          >
+            Sito pubblico
+          </Link>
           <button
             onClick={handleLogout}
             className="text-sm text-blue-200 hover:text-white transition-colors"

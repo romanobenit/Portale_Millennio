@@ -33,8 +33,8 @@ def validate_production_config() -> None:
     if not s.wallet_encryption_key or not _HEX64.match(s.wallet_encryption_key):
         errors.append("WALLET_ENCRYPTION_KEY deve essere una stringa hex di 64 caratteri (32 byte)")
 
-    if not s.contract_address_palasirion_nft or not _ETH_ADDR.match(s.contract_address_palasirion_nft):
-        errors.append("CONTRACT_ADDRESS_PALASIRION_NFT deve essere un indirizzo Ethereum valido (0x...)")
+    if not s.contract_address_palasirio_nft or not _ETH_ADDR.match(s.contract_address_palasirio_nft):
+        errors.append("CONTRACT_ADDRESS_PALASIRIO_NFT deve essere un indirizzo Ethereum valido (0x...)")
 
     if not s.polygon_rpc_url or not s.polygon_rpc_url.startswith("https://"):
         errors.append("POLYGON_RPC_URL deve essere un endpoint HTTPS")

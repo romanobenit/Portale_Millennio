@@ -11,7 +11,7 @@ from modules.nft.wallet import get_account_from_encrypted
 
 settings = get_settings()
 
-PALASIRION_NFT_ABI = [
+PALASIRIO_NFT_ABI = [
     {
         "inputs": [{"name": "to", "type": "address"}, {"name": "tokenURI", "type": "string"}],
         "name": "mintNFT",
@@ -107,8 +107,8 @@ async def _web3():
 
 def _contract(w3: AsyncWeb3):
     return w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
+        address=Web3.to_checksum_address(settings.contract_address_palasirio_nft),
+        abi=PALASIRIO_NFT_ABI,
     )
 
 
@@ -120,7 +120,7 @@ def _extract_token_id_from_receipt(receipt) -> int:
     transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)").hex()
     for log_entry in receipt.logs:
         if (
-            log_entry["address"].lower() == settings.contract_address_palasirion_nft.lower()
+            log_entry["address"].lower() == settings.contract_address_palasirio_nft.lower()
             and len(log_entry["topics"]) == 4
             and log_entry["topics"][0].hex() == transfer_topic
         ):

@@ -1,13 +1,13 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("PalasirionNFT", function () {
+describe("PalasirioNFT", function () {
   let contract;
   let owner, minter, user1, user2;
 
   beforeEach(async function () {
     [owner, minter, user1, user2] = await ethers.getSigners();
-    const Factory = await ethers.getContractFactory("PalasirionNFT");
+    const Factory = await ethers.getContractFactory("PalasirioNFT");
     contract = await Factory.deploy(owner.address);
     await contract.waitForDeployment();
   });
@@ -16,7 +16,7 @@ describe("PalasirionNFT", function () {
 
   describe("Deploy", function () {
     it("ha il nome e simbolo corretti", async function () {
-      expect(await contract.name()).to.equal("Palasirion Diritto d'Uso");
+      expect(await contract.name()).to.equal("Palasirio Diritto d'Uso");
       expect(await contract.symbol()).to.equal("PALA");
     });
 
@@ -76,7 +76,7 @@ describe("PalasirionNFT", function () {
     it("non-minter non può mintare", async function () {
       await expect(
         contract.connect(user1).mintNFT(user2.address, "ipfs://QmTest")
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
 
     it("tokenURI è impostato correttamente", async function () {
@@ -128,7 +128,7 @@ describe("PalasirionNFT", function () {
       await contract.connect(owner).mintNFTWithSlot(user1.address, uri, slotKey, icalHash);
       await expect(
         contract.connect(owner).mintNFTWithSlot(user2.address, uri, slotKey, icalHash)
-      ).to.be.revertedWith("PalasirionNFT: slot gia prenotato");
+      ).to.be.revertedWith("PalasirioNFT: slot gia prenotato");
     });
 
     it("hash iCal e slot key recuperabili on-chain", async function () {
@@ -140,7 +140,7 @@ describe("PalasirionNFT", function () {
     it("non-minter non può mintare con slot", async function () {
       await expect(
         contract.connect(user1).mintNFTWithSlot(user2.address, uri, slotKey, icalHash)
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
   });
 
@@ -182,7 +182,7 @@ describe("PalasirionNFT", function () {
       await contract.connect(owner).mintNFTWithSlot(user1.address, uri, "2027-03-02_mattina_09", icalHash);
       await expect(
         contract.connect(owner).mintNFTWithSlots(user2.address, uri, slotKeys, icalHash)
-      ).to.be.revertedWith("PalasirionNFT: slot gia prenotato");
+      ).to.be.revertedWith("PalasirioNFT: slot gia prenotato");
     });
 
     it("la revert non lascia prenotazioni parziali (atomicità)", async function () {
@@ -198,13 +198,13 @@ describe("PalasirionNFT", function () {
     it("reverta con array di slot vuoto", async function () {
       await expect(
         contract.connect(owner).mintNFTWithSlots(user1.address, uri, [], icalHash)
-      ).to.be.revertedWith("PalasirionNFT: nessuno slot");
+      ).to.be.revertedWith("PalasirioNFT: nessuno slot");
     });
 
     it("non-minter non può mintare", async function () {
       await expect(
         contract.connect(user1).mintNFTWithSlots(user2.address, uri, slotKeys, icalHash)
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
   });
 
@@ -228,13 +228,13 @@ describe("PalasirionNFT", function () {
     it("updateTokenURI reverta su token inesistente", async function () {
       await expect(
         contract.connect(owner).updateTokenURI(999, newUri)
-      ).to.be.revertedWith("PalasirionNFT: token inesistente");
+      ).to.be.revertedWith("PalasirioNFT: token inesistente");
     });
 
     it("updateTokenURI solo minter", async function () {
       await expect(
         contract.connect(user1).updateTokenURI(0, newUri)
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
 
     it("updateIcalHash aggiorna l'hash on-chain", async function () {
@@ -245,13 +245,13 @@ describe("PalasirionNFT", function () {
     it("updateIcalHash reverta su token inesistente", async function () {
       await expect(
         contract.connect(owner).updateIcalHash(999, newIcalHash)
-      ).to.be.revertedWith("PalasirionNFT: token inesistente");
+      ).to.be.revertedWith("PalasirioNFT: token inesistente");
     });
 
     it("updateIcalHash solo minter", async function () {
       await expect(
         contract.connect(user1).updateIcalHash(0, newIcalHash)
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
   });
 
@@ -283,7 +283,7 @@ describe("PalasirionNFT", function () {
       await contract.connect(owner).mintNFT(user1.address, "ipfs://uri1");
       await expect(
         contract.connect(user1).transferFrom(user1.address, user2.address, 0)
-      ).to.be.revertedWith("PalasirionNFT: token non trasferibile");
+      ).to.be.revertedWith("PalasirioNFT: token non trasferibile");
     });
 
     it("safeTransferFrom da user blocca con errore", async function () {
@@ -292,7 +292,7 @@ describe("PalasirionNFT", function () {
         contract.connect(user1)["safeTransferFrom(address,address,uint256)"](
           user1.address, user2.address, 0
         )
-      ).to.be.revertedWith("PalasirionNFT: token non trasferibile");
+      ).to.be.revertedWith("PalasirioNFT: token non trasferibile");
     });
 
     it("approve e poi transfer blocca ugualmente", async function () {
@@ -300,7 +300,7 @@ describe("PalasirionNFT", function () {
       await contract.connect(user1).approve(user2.address, 0);
       await expect(
         contract.connect(user2).transferFrom(user1.address, user2.address, 0)
-      ).to.be.revertedWith("PalasirionNFT: token non trasferibile");
+      ).to.be.revertedWith("PalasirioNFT: token non trasferibile");
     });
   });
 
@@ -377,7 +377,7 @@ describe("PalasirionNFT", function () {
       await contract.connect(owner).removeMinter(minter.address);
       await expect(
         contract.connect(minter).mintNFT(user1.address, "ipfs://uri1")
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
 
     it("isMinter ritorna false per address zero", async function () {
@@ -398,7 +398,7 @@ describe("PalasirionNFT", function () {
     it("address sconosciuto non è owner e non è minter — revert", async function () {
       await expect(
         contract.connect(user2).mintNFT(user1.address, "ipfs://uri1")
-      ).to.be.revertedWith("PalasirionNFT: non autorizzato");
+      ).to.be.revertedWith("PalasirioNFT: non autorizzato");
     });
   });
 

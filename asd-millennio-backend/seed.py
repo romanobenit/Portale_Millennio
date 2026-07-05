@@ -241,7 +241,7 @@ async def main() -> None:
             valore=10, attivo=True,
             nome="Promo lancio — mattina -10%",
             valido_fino_a="2027-12-31",
-            note="Sconto di lancio per il primo anno di vendite Palasirion",
+            note="Sconto di lancio per il primo anno di vendite Palasirio",
         ))
 
         for p in pricing:

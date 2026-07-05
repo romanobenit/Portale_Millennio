@@ -265,7 +265,7 @@ export function CalendarioSelector({ onProcedi, tessera_attiva, autenticato }: C
       <div className="sticky bottom-4">
         <Card title={`Riepilogo — ${nOreSelezionate} ore selezionate`}>
           {nOreSelezionate === 0 ? (
-            <p className="text-sm text-gray-400">Seleziona le ore del Palasirion che vuoi acquistare come NFT</p>
+            <p className="text-sm text-gray-400">Seleziona le ore del Palasirio che vuoi acquistare come NFT</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-sm">
               {(["notte", "mattina", "pomeriggio"] as const).map((f) =>

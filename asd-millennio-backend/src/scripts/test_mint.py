@@ -21,11 +21,11 @@ settings = get_settings()
 
 async def main():
     print("=" * 60)
-    print("  TEST MINT — PalasirionNFT su Polygon Amoy")
+    print("  TEST MINT — PalasirioNFT su Polygon Amoy")
     print("=" * 60)
     print(f"  RPC:       {settings.polygon_rpc_url[:50]}...")
     print(f"  Chain ID:  {settings.polygon_chain_id}")
-    print(f"  Contratto: {settings.contract_address_palasirion_nft}")
+    print(f"  Contratto: {settings.contract_address_palasirio_nft}")
     print()
 
     # Usa la chiave minter dal .env cifrandola al volo per il test
@@ -36,8 +36,8 @@ async def main():
     if not settings.wallet_encryption_key:
         print("❌ WALLET_ENCRYPTION_KEY non impostata nel .env")
         return
-    if not settings.contract_address_palasirion_nft:
-        print("❌ CONTRACT_ADDRESS_PALASIRION_NFT non impostata nel .env")
+    if not settings.contract_address_palasirio_nft:
+        print("❌ CONTRACT_ADDRESS_PALASIRIO_NFT non impostata nel .env")
         return
 
     # Cifra la chiave minter con la WALLET_ENCRYPTION_KEY (come farebbe il sistema)
@@ -51,7 +51,7 @@ async def main():
     print(f"  Recipient: {recipient}")
 
     # URI di test (normalmente punta a IPFS)
-    test_uri = "ipfs://QmTestMillennioASDPalasirionNFT000000000000001"
+    test_uri = "ipfs://QmTestMillennioASDPalasirioNFT000000000000001"
 
     print()
     print("  Invio transazione mint...")
@@ -60,7 +60,7 @@ async def main():
         print(f"  OK Mint riuscito! Token ID: {token_id}")
         print()
         print(f"  Verifica su Polygonscan:")
-        print(f"  https://amoy.polygonscan.com/token/{settings.contract_address_palasirion_nft}?a={recipient}")
+        print(f"  https://amoy.polygonscan.com/token/{settings.contract_address_palasirio_nft}?a={recipient}")
         print()
 
         # Verifica che il token sia nel wallet

@@ -25,7 +25,7 @@ def test_genera_ical_header():
     assert "END:VCALENDAR" in content
     assert "Token ID: 42" in content
     assert "VOL-2026-00001" in content
-    assert "Palasirion" in content
+    assert "Palasirio" in content
 
 
 def test_genera_ical_un_vevent_per_ora_mattina():

@@ -1,5 +1,5 @@
 """
-Task Celery per il mint NFT Palasirion.
+Task Celery per il mint NFT Palasirio.
 
 Flusso:
   conferma_pagamento() → esegui_mint_task.delay(acquisto_id)
@@ -116,7 +116,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
                     )
                 else:
                     ical_pre = genera_ical_content(
-                        slots, 0, tessera_id, settings.contract_address_palasirion_nft,
+                        slots, 0, tessera_id, settings.contract_address_palasirio_nft,
                         ore_per_slot=ore_per_slot,
                     )
                     ical_hash_pre = calcola_sha256(ical_pre)
@@ -137,7 +137,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
 
                 # Persisti SUBITO il token_id (checkpoint): idempotenza retry.
                 acquisto.token_id = token_id
-                acquisto.contract_address = settings.contract_address_palasirion_nft
+                acquisto.contract_address = settings.contract_address_palasirio_nft
                 await db.commit()
             else:
                 token_id = acquisto.token_id
@@ -149,7 +149,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
             # Rigenera iCal/metadati con il token_id reale → IPFS → aggiorna URI on-chain.
             # update_token_uri è ri-eseguibile (idempotente a livello di stato finale).
             ical_content = genera_ical_content(
-                slots, token_id, tessera_id, settings.contract_address_palasirion_nft,
+                slots, token_id, tessera_id, settings.contract_address_palasirio_nft,
                 ore_per_slot=ore_per_slot,
             )
             ical_hash = calcola_sha256(ical_content)

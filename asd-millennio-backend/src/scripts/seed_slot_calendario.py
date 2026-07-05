@@ -1,5 +1,5 @@
 """
-Seed slot calendario per il periodo di vendita Palasirion.
+Seed slot calendario per il periodo di vendita Palasirio.
 
 Genera UN ROW PER (data, fascia) per ogni Lunedì–Venerdì
 nel periodo 01/01/2027 – 31/12/2042.
@@ -55,7 +55,7 @@ async def _seed(dry_run: bool = False) -> None:
 
     totale_atteso = len(date_vendibili) * len(FASCE)
     print(
-        f"Periodo vendita Palasirion {STAGIONE_INIZIO} -> {STAGIONE_FINE}: "
+        f"Periodo vendita Palasirio {STAGIONE_INIZIO} -> {STAGIONE_FINE}: "
         f"{len(date_vendibili)} giorni vendibili (Lun–Ven) × {len(FASCE)} fasce "
         f"= {totale_atteso} slot totali"
     )

@@ -5,17 +5,17 @@ async function main() {
   console.log("Deploy con account:", deployer.address);
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "MATIC");
 
-  const PalasirionNFT = await ethers.getContractFactory("PalasirionNFT");
-  const contract = await PalasirionNFT.deploy(deployer.address);
+  const PalasirioNFT = await ethers.getContractFactory("PalasirioNFT");
+  const contract = await PalasirioNFT.deploy(deployer.address);
   await contract.waitForDeployment();
 
   const address = await contract.getAddress();
-  console.log("PalasirionNFT deployato a:", address);
+  console.log("PalasirioNFT deployato a:", address);
   console.log("Network:", (await ethers.provider.getNetwork()).name);
   console.log("Transaction hash:", contract.deploymentTransaction().hash);
 
   console.log("\nAggiorna il .env:");
-  console.log(`CONTRACT_ADDRESS_PALASIRION_NFT=${address}`);
+  console.log(`CONTRACT_ADDRESS_PALASIRIO_NFT=${address}`);
 }
 
 main().catch((error) => {
