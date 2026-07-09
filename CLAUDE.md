@@ -236,6 +236,13 @@ updated_at        TIMESTAMPTZ DEFAULT now()
 - Numero tessera: `{PREFISSO_SPORT}-{ANNO_INIZIO}-{PROGRESSIVO_5_CIFRE}`
   dove `ANNO_INIZIO` è il primo anno dell'anno sportivo (es. anno sportivo `2026-2027` → `2026`).
   Esempi: `VOL-2026-00042`, `BDM-2026-00007`, `KFU-2026-00001`, `PCK-2026-00003`
+- **Categoria "sostenitore"**: `Tessera.sport = 'sostenitore'` (stessa colonna, nessuna migration), prefisso
+  `SOS` (`SOS-2026-00001`). Non è un ruolo Keycloak, è una categoria di tessera. Il gate d'acquisto NFT
+  resta "tessera attiva" (sport *o* sostenitore) — invariato. Si diventa sostenitore in due modi, **mai per
+  donazione** (erogazioni liberali sono M04-STD, fuori scope): (a) automaticamente, alla conferma di un
+  acquisto NFT — emessa/rinnovata sul **socio pagante** (mai sul minore, anche per acquisti
+  `acquisto_per_minore`), idempotente per anno sportivo; (b) emissione manuale da staff per sostenitori
+  senza tessera sportiva. Un socio può avere sport + sostenitore insieme. Prezzo NFT invariato.
 - Alert automatici scadenza: 30, 15, 7 giorni prima (email + notifica push)
 - Un socio può avere tessere per sport diversi nello stesso anno
 - Scadenza tessera: sempre il **30 giugno** dell'anno sportivo corrente, indipendentemente

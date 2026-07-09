@@ -20,7 +20,13 @@ from schemas.tessere import TesseraCreate, TesseraResponse, TesseraVerificaRespo
 
 settings = get_settings()
 
-SPORT_PREFISSI = {"volley": "VOL", "badminton": "BDM", "kung_fu": "KFU", "pickleball": "PCK"}
+SPORT_PREFISSI = {
+    "volley": "VOL",
+    "badminton": "BDM",
+    "kung_fu": "KFU",
+    "pickleball": "PCK",
+    "sostenitore": "SOS",
+}
 
 
 def _calcola_scadenza_tessera(anno_sportivo: str) -> date:

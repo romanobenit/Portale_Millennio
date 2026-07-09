@@ -21,7 +21,9 @@ Stack **completo e funzionante in locale** (Docker Compose, tutti i container up
 - ✅ **Area dirigenza** navigabile e funzionante (auth gate, chrome condivisa, fix dashboard).
 - ✅ **Dati Docker spostati su F:** per disco C: pieno (vedi §GOTCHA).
 
-⚠️ **Tutto il lavoro di questa sessione è NON committato**: `git status` = **61 file modificati** sul branch `fix/p0-payment-mint` (ultimo commit `19b39fa`, del ciclo P0-P3 precedente). Da committare quando si vuole consolidare.
+✅ **Lavoro committato e pushato**: commit `efb8cdd` (99 file, +5574/−767) sul branch `fix/p0-payment-mint`, pushato su `origin` (`romanobenit/Portale_Millennio`). **PR `fix/p0-payment-mint` → `main` NON ancora aperta** (`gh` non installato → aprirla a mano: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint).
+
+✅ **"Socio sostenitore" IMPLEMENTATO** (2026-07-09, working tree — non ancora committato): vedi §SOCIO SOSTENITORE per i dettagli. Verificato con test unitari + smoke reale contro il DB del container (`_assicura_tessera_sostenitore` idempotente).
 
 # TECH STACK
 
@@ -118,6 +120,26 @@ Il realm era andato perso col DB → ricreato via API. **È stato esportato** in
 - **Prenotazione campi**: **per-ora + carrello** (vedi §dedicata).
 - **Frontend**: sito pubblico (`app/(public)`), dashboard soci, area dirigenza (chrome condivisa: dashboard/pricing/rendiconto/campi + "Area soci"/"Sito pubblico"), staff verifica.
 
+# SOCIO SOSTENITORE (IMPLEMENTATO — 2026-07-09)
+
+Il "socio sostenitore" è una **categoria di tessera** (`Tessera.sport = 'sostenitore'`), non un ruolo Keycloak. Nessuna migration di schema: la colonna `sport` era già `String` libera.
+
+**Regole implementate:**
+- Prefisso numero tessera **`SOS`** (`SOS-2026-00001`) — `SPORT_PREFISSI` in [soci/service.py](asd-millennio-backend/src/modules/soci/service.py).
+- **Gate acquisto NFT invariato**: serve una tessera attiva (sport *o* sostenitore); `_verifica_tessera_attiva` non è stato toccato.
+- **Emissione automatica alla conferma NFT**: `NFTService._assicura_tessera_sostenitore(socio_id)` in [nft/service.py](asd-millennio-backend/src/modules/nft/service.py), chiamata da `conferma_pagamento` subito dopo `acquisto.stato = "pagato"`, **nella stessa transazione** del webhook (prima del `flush` finale). Idempotente per anno sportivo: se esiste già una tessera SOS per l'anno la riattiva (se non attiva) senza duplicarla; altrimenti la crea `attiva` da subito (nessun passaggio `bozza`/pagamento — è "inclusa" nell'acquisto NFT già pagato).
+- **Acquisto per un minore → decisione confermata dall'utente**: il sostenitore è sempre il **socio pagante** (`acquisto.socio_id`), mai il minore, indipendentemente da `acquisto_per_minore`/`minore_id`.
+- **Emissione manuale da staff**: resta possibile via `POST /soci/{socio_id}/tessere` con `sport="sostenitore"` (nessuna UI staff per l'emissione tessere esiste ancora nel frontend — è backend-only anche per gli altri sport, non è stato aggiunto nulla di nuovo qui).
+- Etichetta "Socio Sostenitore" in `SPORT_LABEL`: [soci/pdf.py](asd-millennio-backend/src/modules/soci/pdf.py) (tessera PDF) e [dashboard/tessere/page.tsx](asd-millennio-frontend/app/dashboard/tessere/page.tsx) ("Le mie tessere"). Il componente `components/soci/TesseraCard.tsx` è **dead code** (non importato da nessuna pagina) — non toccato.
+- Erogazioni liberali / donazioni restano ESCLUSE (M04-STD, fuori scope).
+- `CLAUDE.md §M01` aggiornato con la regola.
+
+**Verificato:**
+- `pytest src/tests/unit/test_nft_service.py` — 10/10 (2 nuovi test: emissione + idempotenza; test 8 aggiornato per le query aggiuntive).
+- Smoke reale contro il DB del container `backend` (script temporaneo, poi rimosso): prima chiamata crea `SOS-2026-00001` attiva con scadenza `2027-06-30` e `pdf_url`; seconda chiamata non duplica (1 sola riga).
+- Immagine `backend` ricostruita e riavviata con il nuovo codice (`docker compose build backend && up -d backend`) — healthy, nessun errore di import.
+- **Non ancora committato** — nel working tree insieme a questo handoff.
+
 # GOTCHA / KNOWN ISSUES (aggiornati)
 
 - **Docker su F:**: il disco C: si era riempito → la distro WSL2 `docker-desktop-data` (~50 GB) è stata spostata su `F:\DockerData\wsl\data`. Il `BasePath` nel registro (`HKCU\...\Lxss\{11aeb12d-...}`) punta lì. Se Docker non trova i dati, controllare quel BasePath. Cartella progetto e dati Docker sono entrambi su F:.
@@ -143,6 +165,7 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 9. **Carrello con `stripe_session_id` condiviso**: più prenotazioni → una sessione Stripe (1 pagamento). Ha richiesto di **rimuovere il vincolo UNIQUE** su quella colonna (migration `20260705_120000`). L'idempotenza del webhook resta garantita da `webhook_log`.
 10. **Auto-annullo via lock 30 min** (non via beacon on-unload): robusto lato server, non dipende dal browser.
 11. **Chrome dirigenza nel `layout.tsx`** (non duplicata nelle pagine): tutte le pagine `/dirigenza` ereditano header+sidebar e il gate auth.
+12. **Socio sostenitore → il pagante, mai il minore**: per acquisti `acquisto_per_minore`, la tessera SOS va sempre al socio che paga (`acquisto.socio_id`), non al minore beneficiario del diritto d'uso. Decisione utente esplicita (2026-07-09).
 
 # TEST STATUS
 
@@ -152,7 +175,7 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 
 # NEXT STEPS (priorità)
 
-1. **Committare** il lavoro (61 file) sul branch, con messaggi sensati (footer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`). Poi eventuale PR `fix/p0-payment-mint` → `main` (repo `romanobenit/Portale_Millennio`; `gh` non installato → PR a mano dal link).
+1. **Committare** "Socio sostenitore" (working tree pronto: backend + frontend + CLAUDE.md + test) e poi **aprire la PR** `fix/p0-payment-mint` → `main` (commit `efb8cdd` già pushato; `gh` non installato → a mano: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint).
 2. **Disattivare la registrazione self-service** Keycloak e valutare l'export del realm come `--import-realm` permanente in compose.
 3. **Decidere** privilege escalation staff→dirigenza; **mitigare** leak PII pubblico (GDPR).
 4. **Ruotare** la chiave minter Amoy.
@@ -162,7 +185,7 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 
 # CRITICAL CONTEXT (per una nuova sessione)
 
-1. Leggi `CLAUDE.md` (intero), `MEMORY.md` + i file di memoria, e questo handoff. Verifica `git status` (61 modifiche non committate), `alembic current` (`20260705_120000`), e che le immagini siano ricostruite con l'ultimo codice.
+1. Leggi `CLAUDE.md` (intero), `MEMORY.md` + i file di memoria, e questo handoff. Verifica `git status` (dovrebbe essere pulito; ultimo commit `efb8cdd` pushato su `fix/p0-payment-mint`), `alembic current` (`20260705_120000`), e che le immagini siano ricostruite con l'ultimo codice.
 2. **Non fidarti che container/DB siano allineati al codice**: dopo modifiche serve `docker compose build <svc>` + `up -d`. Un `up -d` ricrea dall'immagine e annulla i `docker cp`.
 3. **Contratto Amoy**: `CONTRACT_ADDRESS_PALASIRIO_NFT` nel `.env` root; contratto `PalasirioNFT` (rinominato). Per modifiche al contratto mostra il **diff** e chiedi approvazione (CLAUDE.md §10.5).
 4. **PowerShell** come shell principale; evita here-string `@'...'@` (guard del sandbox) e redirezioni di stderr di comandi nativi.

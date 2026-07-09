@@ -32,6 +32,7 @@ SPORT_LABEL: dict[str, str] = {
     "badminton": "Badminton",
     "kung_fu": "Kung Fu",
     "pickleball": "Pickleball",
+    "sostenitore": "Socio Sostenitore",
 }
 
 BLU_ASD = colors.HexColor("#1d4ed8")

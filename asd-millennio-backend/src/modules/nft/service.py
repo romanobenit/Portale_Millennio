@@ -1,6 +1,6 @@
 import asyncio
 import time as time_module
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import stripe
@@ -16,6 +16,7 @@ from models.tessera import Tessera
 from models.wallet import WalletCustodiale
 from modules.calendario.service import CalendarioService
 from modules.nft.wallet import genera_wallet
+from modules.soci.service import _calcola_scadenza_tessera, _genera_numero_tessera
 from schemas.nft import (
     AcquistoNFTRequest,
     AcquistoNFTResponse,
@@ -201,6 +202,40 @@ class NFTService:
                 detail="Il minore specificato non risulta associato al tuo profilo",
             )
 
+    async def _assicura_tessera_sostenitore(self, socio_id: UUID) -> None:
+        """
+        Emette o rinnova la tessera 'sostenitore' (SOS) del socio pagante, idempotente
+        per anno sportivo. Un acquisto NFT confermato rende automaticamente il socio
+        sostenitore per l'anno sportivo corrente (CLAUDE.md §M01 — Socio sostenitore).
+        """
+        anno = settings.anno_sportivo_corrente
+        result = await self.db.execute(
+            select(Tessera).where(
+                Tessera.socio_id == socio_id,
+                Tessera.sport == "sostenitore",
+                Tessera.anno_sportivo == anno,
+            )
+        )
+        tessera = result.scalar_one_or_none()
+        if tessera:
+            if tessera.stato != "attiva":
+                tessera.stato = "attiva"
+            return
+
+        numero = await _genera_numero_tessera(self.db, "sostenitore", anno)
+        tessera = Tessera(
+            socio_id=socio_id,
+            numero_tessera=numero,
+            sport="sostenitore",
+            stato="attiva",
+            anno_sportivo=anno,
+            data_scadenza=_calcola_scadenza_tessera(anno),
+            data_emissione=date.today(),
+        )
+        self.db.add(tessera)
+        await self.db.flush()
+        tessera.pdf_url = f"{settings.app_url}/api/v1/tessere/{tessera.id}/pdf"
+
     async def conferma_pagamento(self, stripe_session_id: str) -> UUID | None:
         """
         Chiamato dal webhook Stripe dopo checkout.session.completed.
@@ -270,6 +305,7 @@ class NFTService:
             slot.stato = CalendarioService._calcola_stato(slot)
 
         acquisto.stato = "pagato"
+        await self._assicura_tessera_sostenitore(acquisto.socio_id)
         await self.db.flush()
         return acquisto.id
 

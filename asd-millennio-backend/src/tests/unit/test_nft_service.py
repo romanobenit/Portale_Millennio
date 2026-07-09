@@ -389,6 +389,8 @@ async def test_conferma_pagamento_ritorna_id_senza_dispatch():
         _scalar_one_or_none_result(acquisto_mock),   # acquisto by session
         _scalars_all_result([link_mock]),            # links
         _scalar_one_or_none_result(slot_mock),       # slot FOR UPDATE (claim)
+        _scalar_one_or_none_result(None),            # _assicura_tessera_sostenitore: nessuna SOS esistente
+        _scalar_one_or_none_result(None),            # _genera_numero_tessera: nessun progressivo precedente
     ])
 
     with patch("modules.nft.service.CalendarioService"), \
@@ -398,3 +400,97 @@ async def test_conferma_pagamento_ritorna_id_senza_dispatch():
 
     assert result == acq_id                       # id da accodare DOPO il commit
     assert acquisto_mock.stato == "pagato"
+
+
+# ── test 9: conferma_pagamento emette la tessera sostenitore (idempotente) ────
+
+@pytest.mark.asyncio
+async def test_conferma_pagamento_emette_tessera_sostenitore():
+    """Un acquisto NFT confermato emette una tessera SOS attiva per il socio pagante."""
+    from modules.nft.service import NFTService
+
+    socio_id = uuid4()
+    acquisto_mock = MagicMock()
+    acquisto_mock.id = uuid4()
+    acquisto_mock.socio_id = socio_id
+    acquisto_mock.stato = "in_attesa_pagamento"
+
+    link_mock = MagicMock()
+    link_mock.slot_calendario_id = uuid4()
+    link_mock.ore_acquistate = [8]
+
+    slot_mock = MagicMock()
+    slot_mock.ore_vendute = []
+    slot_mock.ore_in_lock = [8]
+    slot_mock.ora_inizio = MagicMock(hour=8)
+    slot_mock.ore_totali = 5
+
+    paid_session = MagicMock()
+    paid_session.payment_status = "paid"
+    paid_session.payment_intent = "pi_z"
+
+    db = _mock_db()
+    db.execute = AsyncMock(side_effect=[
+        _scalar_one_or_none_result(acquisto_mock),   # acquisto by session
+        _scalars_all_result([link_mock]),            # links
+        _scalar_one_or_none_result(slot_mock),       # slot FOR UPDATE (claim)
+        _scalar_one_or_none_result(None),            # nessuna tessera SOS esistente
+        _scalar_one_or_none_result(None),            # nessun progressivo precedente
+    ])
+
+    with patch("modules.nft.service.CalendarioService"), \
+         patch("modules.nft.service.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        mock_thread.return_value = paid_session
+        await NFTService(db).conferma_pagamento("cs_test")
+
+    tessere_create = [c for c in db.add.call_args_list if c.args[0].sport == "sostenitore"]
+    assert len(tessere_create) == 1
+    nuova = tessere_create[0].args[0]
+    assert nuova.socio_id == socio_id
+    assert nuova.numero_tessera == "SOS-2026-00001"
+    assert nuova.stato == "attiva"
+
+
+# ── test 10: conferma_pagamento non duplica la tessera SOS già attiva ────────
+
+@pytest.mark.asyncio
+async def test_conferma_pagamento_sostenitore_idempotente():
+    """Se il socio ha già una SOS attiva per l'anno, non ne crea una seconda."""
+    from modules.nft.service import NFTService
+
+    acquisto_mock = MagicMock()
+    acquisto_mock.id = uuid4()
+    acquisto_mock.socio_id = uuid4()
+    acquisto_mock.stato = "in_attesa_pagamento"
+
+    link_mock = MagicMock()
+    link_mock.slot_calendario_id = uuid4()
+    link_mock.ore_acquistate = [8]
+
+    slot_mock = MagicMock()
+    slot_mock.ore_vendute = []
+    slot_mock.ore_in_lock = [8]
+    slot_mock.ora_inizio = MagicMock(hour=8)
+    slot_mock.ore_totali = 5
+
+    tessera_sos_esistente = MagicMock()
+    tessera_sos_esistente.stato = "attiva"
+
+    paid_session = MagicMock()
+    paid_session.payment_status = "paid"
+    paid_session.payment_intent = "pi_w"
+
+    db = _mock_db()
+    db.execute = AsyncMock(side_effect=[
+        _scalar_one_or_none_result(acquisto_mock),         # acquisto by session
+        _scalars_all_result([link_mock]),                  # links
+        _scalar_one_or_none_result(slot_mock),             # slot FOR UPDATE (claim)
+        _scalar_one_or_none_result(tessera_sos_esistente),  # tessera SOS già attiva
+    ])
+
+    with patch("modules.nft.service.CalendarioService"), \
+         patch("modules.nft.service.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        mock_thread.return_value = paid_session
+        await NFTService(db).conferma_pagamento("cs_test")
+
+    db.add.assert_not_called()  # tessera SOS già attiva → nessuna nuova riga creata

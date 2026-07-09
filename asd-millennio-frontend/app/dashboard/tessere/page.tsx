@@ -10,6 +10,7 @@ const SPORT_LABEL: Record<string, string> = {
   badminton: "Badminton",
   kung_fu: "Kung Fu",
   pickleball: "Pickleball",
+  sostenitore: "Socio Sostenitore",
 };
 
 const STATO_BADGE: Record<string, { label: string; classes: string }> = {
