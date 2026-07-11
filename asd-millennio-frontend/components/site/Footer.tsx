@@ -53,7 +53,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href={portalLinks.raccoltaFondi} className="text-slate-400 transition-colors hover:text-white">
-                  Raccolta fondi
+                  Diventa sostenitore
                 </Link>
               </li>
             </ul>

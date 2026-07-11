@@ -13,6 +13,7 @@ import {
   PrenotazioneCampo,
 } from "@/lib/api/campi";
 import { format, addDays } from "date-fns";
+import toast from "react-hot-toast";
 
 export default function PrenotazioniPage() {
   const searchParams = useSearchParams();
@@ -29,6 +30,8 @@ export default function PrenotazioniPage() {
   const oggi = format(new Date(), "yyyy-MM-dd");
   const fra60 = format(addDays(new Date(), 60), "yyyy-MM-dd");
 
+  // Caricamento completo (mount + ritorno dal pagamento): è la fonte autorevole
+  // iniziale del carrello.
   const caricaDati = async () => {
     try {
       const [disp, cart, mie] = await Promise.all([
@@ -44,6 +47,24 @@ export default function PrenotazioniPage() {
       setError(e instanceof Error ? e.message : "Errore di rete");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Riconciliazione in background dopo aggiungi/rimuovi: aggiorna SOLO la
+  // disponibilità (conteggio campi liberi) e le prenotazioni confermate.
+  // NON tocca il carrello: quello è gestito in modo ottimistico dalle azioni
+  // utente, così due refetch in corsa non possono sovrascriverlo con una
+  // fotografia stale del server (race che faceva "sparire" le prenotazioni).
+  const ricaricaDisponibilita = async () => {
+    try {
+      const [disp, mie] = await Promise.all([
+        fetchDisponibilita(oggi, fra60),
+        fetchMiePrenotazioni().catch(() => [] as PrenotazioneCampo[]),
+      ]);
+      setDisponibilita(disp);
+      setPrenotazioni(mie);
+    } catch {
+      /* i conteggi si aggiorneranno al prossimo caricamento completo */
     }
   };
 
@@ -80,21 +101,31 @@ export default function PrenotazioniPage() {
   const aggiungi = async (s: GiornoDisponibile) => {
     setBusy(s.template_id + s.data + s.ora_inizio);
     try {
-      await aggiungiAlCarrello(s.template_id, s.data, s.ora_inizio);
-      await caricaDati();
+      const creata = await aggiungiAlCarrello(s.template_id, s.data, s.ora_inizio);
+      // Feedback immediato: aggiorna subito il carrello (badge sullo slot + riga)
+      // e mostra un toast, senza attendere il refetch completo della disponibilità
+      // (loop server-side su 60 giorni → lento). I conteggi si riconciliano dopo.
+      setCarrello((prev) => [...prev, creata]);
+      toast.success(`Aggiunta al carrello · ${formattaOra(creata.ora_inizio)}`);
+      ricaricaDisponibilita();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Errore nell'aggiunta");
+      toast.error(e instanceof Error ? e.message : "Errore nell'aggiunta");
     } finally {
       setBusy(null);
     }
   };
 
   const rimuovi = async (id: string) => {
+    const backup = carrello;
+    // Rimozione ottimistica: la riga sparisce subito dal carrello.
+    setCarrello((prev) => prev.filter((c) => c.id !== id));
     try {
       await cancellaPrenotazione(id);
-      await caricaDati();
+      toast.success("Rimossa dal carrello");
+      ricaricaDisponibilita();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Errore nella rimozione");
+      setCarrello(backup); // ripristina in caso di errore
+      toast.error(e instanceof Error ? e.message : "Errore nella rimozione");
     }
   };
 

@@ -36,3 +36,37 @@ export async function verificaAccesso(tokenId: number, slotKey: string) {
   });
   return data;
 }
+
+export interface MioNFT {
+  id: string;
+  token_id: number | null;
+  contract_address: string | null;
+  mint_tx_hash: string | null;
+  ipfs_uri: string | null;
+  importo_eur: number;
+  ore_totali: number;
+  stato: string;
+  data_primo_slot: string | null;
+  polygonscan_url: string | null;
+  certificato_disponibile: boolean;
+  created_at: string;
+}
+
+export async function fetchMieiNFT(): Promise<MioNFT[]> {
+  const { data } = await apiClient.get<MioNFT[]>("/nft/le-mie");
+  return data;
+}
+
+// Scarica il certificato PDF: l'endpoint richiede il Bearer token, quindi non si può
+// usare un semplice <a href>. Si recupera come blob e si forza il download.
+export async function scaricaCertificato(id: string): Promise<void> {
+  const res = await apiClient.get(`/nft/${id}/certificato`, { responseType: "blob" });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `certificato-palasirio-${id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

@@ -37,10 +37,9 @@ export default function AcquistoNFTPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Acquista diritto d&apos;uso Palasirio — NFT</h1>
+      <h1 className="text-2xl font-bold text-gray-900">Sostieni il progetto Palasirio — Ricevi le tue ore di utilizzo</h1>
       <p className="text-gray-600 text-sm">
-        Seleziona le ore del Palasirio (Lun–Ven, 00:00–14:59) che vuoi prenotare.
-        Ogni acquisto genera un NFT unico con file iCal. Il token non è uno strumento finanziario.
+        Seleziona le ore del Palasirio (lun–ven, 00:00–14:59 fino al 2043) che vuoi associare al tuo contributo.
       </p>
 
       {step === "calendario" && (

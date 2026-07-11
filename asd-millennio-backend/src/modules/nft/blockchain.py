@@ -173,12 +173,15 @@ async def mint_nft_with_slots(
     token_uri: str,
     slot_keys: list[str],
     ical_hash: str,
-) -> int:
+) -> tuple[int, str]:
     """
     Minta un NFT prenotando PIÙ slot per-ora (anti double-sell on-chain).
     Firmata dal MINTER del contratto (owner ASD, chiave RAW come update_token_uri),
     NON dal wallet del socio che non è autorizzato a mintare; il token è emesso
     verso il wallet custodiale del socio. Reverta on-chain se un slotKey è già preso.
+
+    Restituisce (token_id, tx_hash): l'hash della tx di conio serve al certificato
+    di sostegno e al link Polygonscan.
     """
     async with _web3() as w3:
         minter = Account.from_key(settings.minter_private_key)
@@ -212,8 +215,9 @@ async def mint_nft_with_slots(
             raise RuntimeError(f"Transazione mintNFTWithSlots fallita: {tx_hash.hex()}")
 
         token_id = _extract_token_id_from_receipt(receipt)
-        logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d", token_id, len(slot_keys))
-        return token_id
+        tx_hex = Web3.to_hex(tx_hash)  # sempre 0x-prefissato, indipendente dalla versione hexbytes
+        logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d, tx=%s", token_id, len(slot_keys), tx_hex)
+        return token_id, tx_hex
 
 
 async def update_token_uri(token_id: int, new_uri: str, new_ical_hash: str) -> None:

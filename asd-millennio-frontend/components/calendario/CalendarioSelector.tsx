@@ -297,7 +297,7 @@ export function CalendarioSelector({ onProcedi, tessera_attiva, autenticato }: C
                 disabled={!autenticato || !tessera_attiva || nOreSelezionate === 0}
                 size="lg"
               >
-                Acquista come NFT — {nOreSelezionate} ore
+                Ricevi il titolo di utilizzo — {nOreSelezionate} ore
               </Button>
             </div>
             {(!autenticato || !tessera_attiva) && (

@@ -75,10 +75,13 @@ class CampiService:
         return Decimal(tmpl.costo_ora).quantize(Decimal("0.01"))
 
     async def _verifica_tessera(self, socio_id: UUID) -> None:
+        # scalars().first() e non scalar_one_or_none(): un socio può avere più
+        # tessere attive insieme (es. sport + sostenitore, CLAUDE.md §M01) —
+        # qui basta verificarne l'esistenza, non serve un risultato unico.
         r = await self.db.execute(
             select(Tessera).where(and_(Tessera.socio_id == socio_id, Tessera.stato == "attiva"))
         )
-        if not r.scalar_one_or_none():
+        if not r.scalars().first():
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
                 detail="Tessera non attiva — impossibile prenotare il campo",

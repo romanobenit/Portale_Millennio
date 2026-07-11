@@ -53,7 +53,7 @@ export function Hero() {
               href={portalLinks.raccoltaFondi}
               className="rounded-lg border-2 border-white/80 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
-              Raccolta fondi
+              Diventa sostenitore
             </Link>
           </div>
 

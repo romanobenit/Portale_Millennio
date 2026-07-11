@@ -36,6 +36,22 @@ class AcquistoNFTDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MioNFTResponse(BaseModel):
+    """Voce della pagina soci "I miei NFT"."""
+    id: UUID
+    token_id: int | None
+    contract_address: str | None
+    mint_tx_hash: str | None
+    ipfs_uri: str | None
+    importo_eur: float
+    ore_totali: int
+    stato: str
+    data_primo_slot: str | None
+    polygonscan_url: str | None
+    certificato_disponibile: bool
+    created_at: datetime
+
+
 class NFTVerificaResponse(BaseModel):
     valid: bool
     socio: str | None

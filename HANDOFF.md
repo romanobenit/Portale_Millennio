@@ -107,7 +107,7 @@ Il realm era andato perso col DB → ricreato via API. **È stato esportato** in
 - DB `millennio` (+ `keycloak`). Tabelle: `soci`, `tessere`, `consensi`, `slot_calendario`, `pricing_rules`, `acquisti_nft` (+`acquisto_nft_slots`, `accesso_log`), `wallet_custodiali`, `webhook_log`, `slot_template_campo`, `prenotazioni_campo`.
 - Relazioni: `acquisti_nft` —N:M via `acquisto_nft_slots(ore_acquistate INT[])`— `slot_calendario`; `tessere/wallet/acquisti/prenotazioni` → `soci`; `prenotazioni_campo` → `slot_template_campo`.
 - Vincoli: `acquisti_nft.stripe_session_id` UNIQUE; `uq_acquisti_nft_contract_token UNIQUE(contract_address, token_id)`. **`prenotazioni_campo.stripe_session_id` NON è più UNIQUE** (rimosso per il carrello → indice normale).
-- **Migrazioni Alembic (head = `20260705_120000`)**: `…120000_create_soci` → `130000_calendario_nft` → `140000_update_pricing` → `150000_stripe_payment_id_index` → `20260614_200000_add_campi_prenotazioni` → `20260620_120000_token_id_unique_per_contract` → **`20260705_120000_drop_prenotazione_session_unique`** (nuova, idempotente). Il DB in esecuzione è stampato a `20260705_120000`.
+- **Migrazioni Alembic (head = `20260711_120000`)**: `…120000_create_soci` → `130000_calendario_nft` → `140000_update_pricing` → `150000_stripe_payment_id_index` → `20260614_200000_add_campi_prenotazioni` → `20260620_120000_token_id_unique_per_contract` → `20260705_120000_drop_prenotazione_session_unique` → **`20260711_120000_add_mint_tx_hash`** (nuova: colonna `acquisti_nft.mint_tx_hash`). Il DB in esecuzione è stampato a `20260711_120000`.
 - `alembic` nel container: `docker exec <backend> sh -c "cd /app && alembic upgrade head"`.
 
 # FUNZIONALITÀ IMPLEMENTATE
@@ -116,6 +116,7 @@ Il realm era andato perso col DB → ricreato via API. **È stato esportato** in
 - **M01 Soci/Tessere**: CRUD, numero tessera (`FOR UPDATE`), PDF+QR, import CSV (savepoint/riga), consensi GDPR, verifica tessera pubblica.
 - **M02 Calendario/Pricing**: slot Lun-Ven 00:00–14:59, disponibilità con prezzo dinamico, lock 30 min, motore pricing (leva_data × scarsità-per-mese × sconto), simulatore, CRUD pricing rules.
 - **M04-NFT**: acquisto→Stripe→webhook→mint, wallet custodiali AES-256-GCM, iCal+SHA-256, metadati IPFS, verifica accesso per-ora, dashboard fundraising (**fix query 30gg**), rendiconto annuale.
+- **Certificato di sostegno (PDF)** — implementato 2026-07-11: alla conferma del mint viene generato un certificato celebrativo A4 (2 pagine: attestato con dati on-chain + Allegato A con elenco ore) e inviato via **Resend** con PDF + iCal in allegato. Scaricabile anche da **"I miei NFT"** (`/dashboard/miei-nft`). Backend: `modules/nft/certificato.py` (reportlab, disegno su canvas), `certificato_builder.py` (assembla da DB), `email.py` (Resend REST via httpx, no-op se `RESEND_API_KEY` vuota). Endpoint `GET /nft/le-mie` e `GET /nft/{id}/certificato` (owner o staff). Nuova colonna `acquisti_nft.mint_tx_hash` (migration `20260711_120000`) popolata dal worker; `mint_nft_with_slots` ora ritorna `(token_id, tx_hash)`. Token storici (pre-feature) mostrano "—" alla voce transazione di conio.
 - **Contratto PalasirioNFT** (Amoy): `mintNFT`, `mintNFTWithSlots` (anti double-sell on-chain), `updateTokenURI/IcalHash`, `isSlotBooked`, `getTokenSlotKeys`, soulbound. **Deployato + verificato** su Amoy.
 - **Prenotazione campi**: **per-ora + carrello** (vedi §dedicata).
 - **Frontend**: sito pubblico (`app/(public)`), dashboard soci, area dirigenza (chrome condivisa: dashboard/pricing/rendiconto/campi + "Area soci"/"Sito pubblico"), staff verifica.
@@ -179,7 +180,7 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 2. **Disattivare la registrazione self-service** Keycloak e valutare l'export del realm come `--import-realm` permanente in compose.
 3. **Decidere** privilege escalation staff→dirigenza; **mitigare** leak PII pubblico (GDPR).
 4. **Ruotare** la chiave minter Amoy.
-5. **Integrare Resend** (refund/conferma/scadenze).
+5. **Configurare `RESEND_API_KEY`** (root `.env` + `asd-millennio-backend/.env`): oggi è **vuota** → l'email del certificato è un no-op (logga warning, il PDF resta scaricabile da "I miei NFT"). Con la chiave, l'invio automatico parte. Estendere Resend anche a refund/scadenze.
 6. **UAT** flusso completo (checkout Stripe reale) + DPIA + audit contratto pre-mainnet.
 7. **Test** automatici prenotazione campi (carrello) + integration webhook.
 
