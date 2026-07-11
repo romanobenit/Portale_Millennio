@@ -20,14 +20,14 @@ function SuccessoContent() {
           Riceverai una email con il <strong>certificato di sostegno (PDF)</strong>, il file iCal,
           il Token ID assegnato on-chain e il link per verificare l&apos;NFT su Polygonscan.
           Il processo può richiedere fino a 60 secondi. Il certificato è anche scaricabile dalla
-          pagina “I miei NFT”.
+          pagina “Il mio sostegno”.
         </p>
         {sessionId && (
           <p className="text-xs text-gray-400 font-mono">Sessione: {sessionId}</p>
         )}
         <div className="flex gap-3">
           <Link href="/dashboard/miei-nft">
-            <Button>I miei NFT</Button>
+            <Button>Il mio sostegno</Button>
           </Link>
           <Link href="/dashboard/nft">
             <Button variant="secondary">Sostieni ancora</Button>

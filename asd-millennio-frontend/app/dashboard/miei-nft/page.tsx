@@ -58,7 +58,7 @@ export default function MieiNFTPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">I miei NFT</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Il mio sostegno</h1>
       <p className="text-gray-500 text-sm mb-6">
         Il certificato di sostegno è scaricabile qui e ti viene inviato via email alla conferma del conio.
       </p>
@@ -80,7 +80,7 @@ export default function MieiNFTPage() {
                   <div>
                     <div className="flex items-center gap-3 mb-1">
                       <span className="font-semibold text-gray-900">
-                        {n.token_id != null ? `NFT #${n.token_id}` : "NFT"}
+                        {n.token_id != null ? `Sostegno #${n.token_id}` : "Sostegno"}
                       </span>
                       <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", badge.classes)}>
                         {badge.label}

@@ -10,6 +10,7 @@ Due pagine:
 Dipendenze: reportlab, qrcode[pil], Pillow (già usate da soci/pdf.py).
 """
 import io
+import os
 from datetime import date
 
 import qrcode
@@ -18,6 +19,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+
+from core.logger import logger
+
+_LOGO_SVG = os.path.join(os.path.dirname(__file__), "assets", "logo_millennio.svg")
+# Cache del logo vettoriale (Drawing reportlab) per larghezza: svg2rlg è lento.
+_logo_cache: dict[float, object] = {}
 
 ORO = colors.HexColor("#BA7517")
 ORO_CHIARO = colors.HexColor("#EF9F27")
@@ -70,6 +77,35 @@ def _center(c: canvas.Canvas, text: str, y: float, font: str, size: float, color
     c.drawCentredString(CX, y, text)
 
 
+def _carica_logo(target_w: float):
+    """
+    Carica il logo ASD Millennio (SVG) come Drawing reportlab, ritagliato al
+    contenuto e scalato a `target_w` pt. Vettoriale (niente rasterizzazione).
+    Ritorna None se svglib/il file non sono disponibili → fallback medaglione.
+    """
+    if target_w in _logo_cache:
+        return _logo_cache[target_w]
+    try:
+        from reportlab.graphics.shapes import Drawing, Group
+        from svglib.svglib import svg2rlg
+
+        src = svg2rlg(_LOGO_SVG)
+        x1, y1, x2, y2 = src.getBounds()
+        cw, ch = (x2 - x1) or 1, (y2 - y1) or 1
+        scale = target_w / cw
+        g = Group(src)
+        # mappa il bounding box del contenuto esattamente in [0..target_w] x [0..h]
+        g.transform = (scale, 0, 0, scale, -x1 * scale, -y1 * scale)
+        d = Drawing(cw * scale, ch * scale)
+        d.add(g)
+        _logo_cache[target_w] = d
+        return d
+    except Exception as e:  # noqa: BLE001 — fallback grazioso al medaglione "M"
+        logger.warning("Logo Millennio non caricato (%s): uso il medaglione di fallback.", e)
+        _logo_cache[target_w] = None
+        return None
+
+
 def _medaglione(c: canvas.Canvas, cx: float, cy: float, r: float, glyph: str, size: float) -> None:
     c.setStrokeColor(ORO)
     c.setLineWidth(2)
@@ -101,10 +137,19 @@ def _riga_blockchain(c: canvas.Canvas, x: float, y: float, label: str, value: st
 
 
 def _pagina_certificato(c: canvas.Canvas, ctx: dict) -> None:
+    from reportlab.graphics import renderPDF
+
     _cornice(c)
 
-    _medaglione(c, CX, PAGE_H - 92, 24, "M", 28)
-    _center(c, "ASD MILLENNIO · PALASIRIO", PAGE_H - 132, "Helvetica", 9, GRIGIO)
+    logo = _carica_logo(150)
+    if logo is not None:
+        # logo vettoriale centrato in alto (marchio "a picchi" ASD Millennio)
+        c.saveState()
+        renderPDF.draw(logo, c, CX - logo.width / 2, PAGE_H - 96)
+        c.restoreState()
+    else:
+        _medaglione(c, CX, PAGE_H - 92, 24, "M", 28)
+    _center(c, "ASD MILLENNIO", PAGE_H - 116, "Helvetica", 9, GRIGIO)
 
     c.setStrokeColor(ORO)
     c.setLineWidth(0.5)

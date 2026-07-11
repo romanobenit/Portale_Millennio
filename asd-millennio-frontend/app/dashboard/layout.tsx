@@ -10,7 +10,7 @@ import { clsx } from "clsx";
 const NAV_LINKS = [
   { href: "/dashboard", label: "Il mio profilo" },
   { href: "/dashboard/nft", label: "Sostieni e scegli ore" },
-  { href: "/dashboard/miei-nft", label: "I miei NFT" },
+  { href: "/dashboard/miei-nft", label: "Il mio sostegno" },
   { href: "/dashboard/tessere", label: "Le mie tessere" },
   { href: "/dashboard/prenotazioni", label: "Prenota campo" },
 ];
