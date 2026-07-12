@@ -11,6 +11,15 @@ StatoTessera = Enum(
     name="stato_tessera"
 )
 
+# Dimensione "verifica" del tesseramento self-service (ibrido: paga → attiva
+# provvisoria → staff conferma entro N giorni, silenzio-assenso).
+# NULL = tessera non soggetta a verifica onboarding (es. emessa da staff o SOS
+# auto-emessa all'acquisto NFT) → trattata come già valida.
+VerificaTessera = Enum(
+    "in_verifica", "confermata", "rifiutata",
+    name="verifica_tessera"
+)
+
 
 class Tessera(Base):
     __tablename__ = "tessere"
@@ -24,6 +33,11 @@ class Tessera(Base):
     data_scadenza = Column(Date)
     anno_sportivo = Column(String)
     pdf_url = Column(Text)
+    # Verifica onboarding (self-service)
+    verifica_stato = Column(VerificaTessera, nullable=True)
+    verifica_scadenza = Column(DateTime(timezone=True), nullable=True)  # +N giorni: auto-conferma
+    verificata_da = Column(UUID(as_uuid=True), ForeignKey("soci.id"), nullable=True)
+    verificata_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

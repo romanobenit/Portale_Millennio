@@ -243,6 +243,18 @@ updated_at        TIMESTAMPTZ DEFAULT now()
   acquisto NFT — emessa/rinnovata sul **socio pagante** (mai sul minore, anche per acquisti
   `acquisto_per_minore`), idempotente per anno sportivo; (b) emissione manuale da staff per sostenitori
   senza tessera sportiva. Un socio può avere sport + sostenitore insieme. Prezzo NFT invariato.
+- **Auto-tesseramento self-service (primo accesso)**: al primo login (Keycloak, registrazione aperta a
+  tutti) se non esiste un profilo `Socio` (`/soci/me` → 404) il frontend porta al wizard onboarding.
+  Flusso **ibrido paga→provvisoria→verifica**: anagrafica + upload **documento d'identità** + consenso
+  (adulto: privacy+trattamento; minore: doppio consenso privacy/trattamento + foto_video, firmati dal
+  tutore) + **pagamento quota** (Stripe) → tessera **`attiva` provvisoria** (`verifica_stato=in_verifica`,
+  scadenza +30gg). Lo **staff** conferma entro 30gg (`GET/POST /soci/verifiche…`); se rifiuta, la tessera
+  decade (`sospesa`) e la quota **non è rimborsata** ma marcata **erogazione liberale** (flag minimo su
+  `pagamento_tessera`, non il modulo M04-STD). Nessuna azione a 30gg → **auto-conferma** (Celery beat, silenzio-assenso).
+  Le **quote** sono gestite dalla dirigenza (`quote_tessera`, `GET/POST/PUT /dirigenza/quote-tessera`), variabili
+  per categoria (sport/sostenitore) e adulto/minore. Documenti sensibili **cifrati AES-256** su volume privato
+  (`documenti_data`), scaricabili solo da proprietario/tutore/staff. **Minori**: aggiunti dal tutore
+  (`POST /soci/me/minori`), senza login proprio (email sintetica), gestiti dal tutore. CF validato col checksum.
 - Alert automatici scadenza: 30, 15, 7 giorni prima (email + notifica push)
 - Un socio può avere tessere per sport diversi nello stesso anno
 - Scadenza tessera: sempre il **30 giugno** dell'anno sportivo corrente, indipendentemente

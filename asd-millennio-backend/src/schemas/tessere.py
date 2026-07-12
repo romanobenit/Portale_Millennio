@@ -23,6 +23,7 @@ class TesseraResponse(BaseModel):
     numero_tessera: str
     sport: str
     stato: str
+    verifica_stato: str | None = None
     data_emissione: date | None
     data_scadenza: date | None
     anno_sportivo: str | None

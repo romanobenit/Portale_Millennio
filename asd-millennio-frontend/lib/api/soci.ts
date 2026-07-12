@@ -22,6 +22,7 @@ export interface Tessera {
   numero_tessera: string;
   sport: string;
   stato: string;
+  verifica_stato: string | null;
   data_emissione: string | null;
   data_scadenza: string | null;
   anno_sportivo: string | null;

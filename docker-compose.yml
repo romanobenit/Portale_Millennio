@@ -51,6 +51,8 @@ services:
     networks:
       - millennio-net
     restart: unless-stopped
+    volumes:
+      - documenti_data:/data/documenti
     expose:
       - "8000"
 
@@ -73,7 +75,8 @@ services:
     build:
       context: ./asd-millennio-backend
       dockerfile: Dockerfile
-    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    # -B: beat embedded (auto-conferma tesseramenti). Worker singolo → nessun doppio scheduling.
+    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q celery -B -s /tmp/celerybeat-schedule
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-millennio}
@@ -143,6 +146,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  documenti_data:   # documenti sensibili cifrati (identità, prova tutela) — privato
 
 networks:
   millennio-net:

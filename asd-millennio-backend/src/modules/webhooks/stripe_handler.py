@@ -74,6 +74,9 @@ async def stripe_webhook(
         if tipo == "prenotazione_campo":
             from modules.campi.service import CampiService
             await CampiService(db).conferma_pagamento(session_id)
+        elif tipo == "tessera":
+            from modules.soci.tesseramento_service import TesseramentoService
+            await TesseramentoService(db).conferma_pagamento_tessera(session_id)
         else:
             acq_to_mint = await nft_service.conferma_pagamento(session_id)
 

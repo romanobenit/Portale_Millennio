@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # Wallet custodiale
     wallet_encryption_key: str = ""
 
+    # Documenti sensibili (identità, prova tutela) — storage cifrato su volume privato
+    documenti_storage_path: str = "/data/documenti"
+    document_encryption_key: str = ""  # se vuota, usa wallet_encryption_key
+
+    # Verifica tesseramento self-service
+    tesseramento_verifica_giorni: int = 30  # giorni entro cui lo staff conferma (silenzio-assenso)
+
     # Email — Resend
     resend_api_key: str = ""
     email_from: str = "noreply@millennioasd.com"
