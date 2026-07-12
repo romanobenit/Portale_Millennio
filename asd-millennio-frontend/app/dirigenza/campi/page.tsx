@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getKeycloak } from "@/lib/auth/keycloak";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -56,13 +57,21 @@ export default function GestioneCampiPage() {
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
-  const token = () => getKeycloak().token ?? "";
+  // Rinfresca il token prima di ogni chiamata (l'access token dura ~5 min → evita 401)
+  const authHeader = async () => {
+    try {
+      await getKeycloak().updateToken(30);
+    } catch {
+      /* refresh best-effort: se fallisce, la richiesta userà il token corrente */
+    }
+    return `Bearer ${getKeycloak().token ?? ""}`;
+  };
 
   const carica = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API}/dirigenza/campi/templates`, {
-        headers: { Authorization: `Bearer ${token()}` },
+        headers: { Authorization: await authHeader() },
       });
       if (!res.ok) throw new Error("Errore nel caricamento");
       setTemplates(await res.json());
@@ -126,7 +135,7 @@ export default function GestioneCampiPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token()}`,
+          Authorization: await authHeader(),
         },
         body: JSON.stringify(body),
       });
@@ -147,7 +156,7 @@ export default function GestioneCampiPage() {
     if (!confirm("Disattivare questo slot? Non sarà più prenotabile.")) return;
     const res = await fetch(`${API}/dirigenza/campi/templates/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token()}` },
+      headers: { Authorization: await authHeader() },
     });
     if (!res.ok) {
       alert("Errore nella disattivazione");
@@ -158,11 +167,18 @@ export default function GestioneCampiPage() {
 
   return (
     <div className="space-y-6">
+      <Link
+        href="/dirigenza"
+        className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+      >
+        ← Torna alla dashboard
+      </Link>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestione Campi</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Configura i template di prenotazione per i campi sportivi
+            Definisci le fasce prenotabili: <strong>orari</strong> (= ore disponibili), numero campi e tariffa
           </p>
         </div>
         <button

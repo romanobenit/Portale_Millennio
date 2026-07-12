@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 
 const FASCIA_LABEL: Record<string, string> = { notte: "Notte", mattina: "Mattina", pomeriggio: "Pomeriggio" };
 
-// Anni civili del periodo di vendita Palasirion
+// Anni civili del periodo di vendita Palasirio
 const ANNI_DISPONIBILI = Array.from({ length: 2042 - 2027 + 1 }, (_, i) => 2027 + i);
 
 export default function RendicontoPage() {
@@ -76,9 +76,9 @@ export default function RendicontoPage() {
           <Card>
             <div className="flex justify-between items-start gap-4 flex-wrap">
               <div>
-                <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">ASD Millennio — Palasirion</div>
+                <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">ASD Millennio — Palasirio</div>
                 <h2 className="text-xl font-bold text-gray-900">
-                  Rendiconto uso Palasirion — Anno {data.anno}
+                  Rendiconto uso Palasirio — Anno {data.anno}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
                   Periodo: {data.periodo_inizio} → {data.periodo_fine}
@@ -166,7 +166,7 @@ export default function RendicontoPage() {
 
           {/* Footer documento */}
           <p className="text-xs text-gray-400 text-center pb-2">
-            ASD Millennio — Palasirion — millennioasd.com
+            ASD Millennio — Palasirio — millennioasd.com
             {" "}— Documento generato automaticamente dalla piattaforma digitale il{" "}
             {new Date(data.generato_il).toLocaleDateString("it-IT")}
           </p>

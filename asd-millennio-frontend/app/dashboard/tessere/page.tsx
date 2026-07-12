@@ -10,6 +10,7 @@ const SPORT_LABEL: Record<string, string> = {
   badminton: "Badminton",
   kung_fu: "Kung Fu",
   pickleball: "Pickleball",
+  sostenitore: "Socio Sostenitore",
 };
 
 const STATO_BADGE: Record<string, { label: string; classes: string }> = {
@@ -95,13 +96,28 @@ function TesseraCard({ tessera }: { tessera: Tessera }) {
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
             <span className="font-mono text-sm font-semibold text-gray-800">
               {tessera.numero_tessera}
             </span>
             <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", badge.classes)}>
               {badge.label}
             </span>
+            {tessera.verifica_stato === "in_verifica" && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                In verifica
+              </span>
+            )}
+            {tessera.verifica_stato === "confermata" && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                Confermata
+              </span>
+            )}
+            {tessera.verifica_stato === "rifiutata" && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                Non confermata
+              </span>
+            )}
           </div>
           <p className="text-sm text-gray-600">
             {SPORT_LABEL[tessera.sport] ?? tessera.sport}

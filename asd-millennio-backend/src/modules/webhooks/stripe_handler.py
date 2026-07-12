@@ -1,5 +1,4 @@
 import asyncio
-import json
 from datetime import datetime, timezone
 
 import stripe
@@ -55,7 +54,9 @@ async def stripe_webhook(
     log = WebhookLog(
         webhook_id=event_id,
         event_type=event["type"],
-        payload=json.dumps(dict(event)),
+        # Riusa il body grezzo già letto: gli oggetti stripe.Event non supportano
+        # dict() in modo affidabile tra versioni dell'SDK (KeyError: 0).
+        payload=payload.decode("utf-8"),
         processed=False,
     )
     db.add(log)
@@ -68,10 +69,14 @@ async def stripe_webhook(
     if event_type == "checkout.session.completed":
         session = event["data"]["object"]
         session_id = session["id"]
-        tipo = (session.get("metadata") or {}).get("tipo", "nft")
+        # stripe.StripeObject (stripe-python >= 7) non supporta .get() — serve to_dict().
+        tipo = (session.to_dict().get("metadata") or {}).get("tipo", "nft")
         if tipo == "prenotazione_campo":
             from modules.campi.service import CampiService
             await CampiService(db).conferma_pagamento(session_id)
+        elif tipo == "tessera":
+            from modules.soci.tesseramento_service import TesseramentoService
+            await TesseramentoService(db).conferma_pagamento_tessera(session_id)
         else:
             acq_to_mint = await nft_service.conferma_pagamento(session_id)
 
@@ -86,7 +91,7 @@ async def stripe_webhook(
         # (impostata in avvia_acquisto() via payment_intent_data.metadata).
         from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
         from models.slot_calendario import SlotCalendario
-        acquisto_id_meta = event["data"]["object"].get("metadata", {}).get("acquisto_id")
+        acquisto_id_meta = event["data"]["object"].to_dict().get("metadata", {}).get("acquisto_id")
         acquisto = None
         if acquisto_id_meta:
             try:
@@ -126,7 +131,7 @@ async def stripe_webhook(
         charge_id = charge_obj["id"]
         # stripe_payment_id salva il PaymentIntent ID (pi_xxx), non il charge ID (ch_xxx).
         # Il campo payment_intent nella charge object collega i due.
-        pi_id_from_charge = charge_obj.get("payment_intent")
+        pi_id_from_charge = charge_obj.to_dict().get("payment_intent")
         logger.info("Rimborso ricevuto: charge=%s pi=%s", charge_id, pi_id_from_charge)
         from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
         from models.slot_calendario import SlotCalendario

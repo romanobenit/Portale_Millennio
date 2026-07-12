@@ -2,22 +2,39 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { getKeycloak, initKeycloakOnce } from "@/lib/auth/keycloak";
+import { usePathname, useRouter } from "next/navigation";
+import { getKeycloak, initKeycloakOnce, isDirigenza } from "@/lib/auth/keycloak";
 import { setAuthToken } from "@/lib/api/client";
+import { fetchMe } from "@/lib/api/soci";
 import { clsx } from "clsx";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Il mio profilo" },
-  { href: "/dashboard/nft", label: "Acquista NFT" },
+  { href: "/dashboard/nft", label: "Sostieni e scegli ore" },
+  { href: "/dashboard/miei-nft", label: "Il mio sostegno" },
   { href: "/dashboard/tessere", label: "Le mie tessere" },
+  { href: "/dashboard/minori", label: "I miei minori" },
   { href: "/dashboard/prenotazioni", label: "Prenota campo" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [nomeUtente, setNomeUtente] = useState("");
   const [authReady, setAuthReady] = useState(false);
+  const [isDir, setIsDir] = useState(false);
+
+  // Primo accesso: se non esiste ancora un profilo socio (/me → 404), porta al wizard.
+  // L'interceptor axios riduce l'errore a Error(detail): il backend risponde
+  // "Profilo non trovato" per il 404 di /me.
+  useEffect(() => {
+    if (!authReady || pathname === "/dashboard/onboarding") return;
+    fetchMe().catch((e: unknown) => {
+      if (e instanceof Error && e.message.toLowerCase().includes("profilo non trovato")) {
+        router.replace("/dashboard/onboarding");
+      }
+    });
+  }, [authReady, pathname, router]);
 
   useEffect(() => {
     // initKeycloakOnce usa un flag modulo-level: sicuro con StrictMode (doppio mount)
@@ -40,6 +57,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               .then((refreshed) => { if (refreshed && kc.token) setAuthToken(kc.token); })
               .catch(() => kc.login());
           };
+          setIsDir(isDirigenza(kc));
           setAuthReady(true);
         } else {
           getKeycloak().login({ redirectUri: window.location.href });
@@ -70,6 +88,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Link href="/" className="text-xl font-bold">ASD Millennio</Link>
         <div className="flex items-center gap-4">
           {nomeUtente && <span className="text-sm text-blue-100">Ciao, {nomeUtente}</span>}
+          {isDir && (
+            <Link
+              href="/dirigenza"
+              className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25 transition-colors"
+            >
+              Area dirigenza →
+            </Link>
+          )}
+          <Link
+            href="/"
+            className="text-sm text-blue-200 hover:text-white transition-colors"
+          >
+            Sito pubblico
+          </Link>
           <button
             onClick={handleLogout}
             className="text-sm text-blue-200 hover:text-white transition-colors"

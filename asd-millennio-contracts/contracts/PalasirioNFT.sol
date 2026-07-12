@@ -5,20 +5,20 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./interfaces/IPalasirionNFT.sol";
+import "./interfaces/IPalasirioNFT.sol";
 
 /**
- * @title PalasirionNFT
- * @notice ERC-721 Soulbound-like per diritti d'uso Palasirion — ASD Millennio.
+ * @title PalasirioNFT
+ * @notice ERC-721 Soulbound-like per diritti d'uso Palasirio — ASD Millennio.
  *         Il token NON è uno strumento finanziario (MiFID II).
  *         Trasferibilità bloccata: solo il contratto può trasferire (escrow → socio).
  */
-contract PalasirionNFT is
+contract PalasirioNFT is
     ERC721,
     ERC721URIStorage,
     ERC721Enumerable,
     Ownable,
-    IPalasirionNFT
+    IPalasirioNFT
 {
     uint256 private _nextTokenId;
 
@@ -29,11 +29,11 @@ contract PalasirionNFT is
     mapping(uint256 => string) private _tokenIcalHashes;
 
     modifier onlyMinter() {
-        require(_minters[msg.sender] || msg.sender == owner(), "PalasirionNFT: non autorizzato");
+        require(_minters[msg.sender] || msg.sender == owner(), "PalasirioNFT: non autorizzato");
         _;
     }
 
-    constructor(address initialOwner) ERC721("Palasirion Diritto d'Uso", "PALA") Ownable(initialOwner) {
+    constructor(address initialOwner) ERC721("Palasirio Diritto d'Uso", "PALA") Ownable(initialOwner) {
         _minters[initialOwner] = true;
     }
 
@@ -59,7 +59,7 @@ contract PalasirionNFT is
         string memory slotKey,
         string memory icalHash
     ) external onlyMinter returns (uint256) {
-        require(!_bookedSlots[slotKey], "PalasirionNFT: slot gia prenotato");
+        require(!_bookedSlots[slotKey], "PalasirioNFT: slot gia prenotato");
 
         uint256 tokenId = _nextTokenId++;
         _safeMint(address(this), tokenId);
@@ -86,9 +86,9 @@ contract PalasirionNFT is
         string[] memory slotKeys,
         string memory icalHash
     ) external onlyMinter returns (uint256) {
-        require(slotKeys.length > 0, "PalasirionNFT: nessuno slot");
+        require(slotKeys.length > 0, "PalasirioNFT: nessuno slot");
         for (uint256 i = 0; i < slotKeys.length; i++) {
-            require(!_bookedSlots[slotKeys[i]], "PalasirionNFT: slot gia prenotato");
+            require(!_bookedSlots[slotKeys[i]], "PalasirioNFT: slot gia prenotato");
         }
 
         uint256 tokenId = _nextTokenId++;
@@ -152,7 +152,7 @@ contract PalasirionNFT is
      * @dev Chiamabile solo dal minter. Richiede che il token esista già.
      */
     function updateTokenURI(uint256 tokenId, string memory newUri) external onlyMinter {
-        require(_ownerOf(tokenId) != address(0), "PalasirionNFT: token inesistente");
+        require(_ownerOf(tokenId) != address(0), "PalasirioNFT: token inesistente");
         _setTokenURI(tokenId, newUri);
     }
 
@@ -160,7 +160,7 @@ contract PalasirionNFT is
      * @notice Aggiorna l'hash iCal on-chain dopo il mint finale.
      */
     function updateIcalHash(uint256 tokenId, string memory newIcalHash) external onlyMinter {
-        require(_ownerOf(tokenId) != address(0), "PalasirionNFT: token inesistente");
+        require(_ownerOf(tokenId) != address(0), "PalasirioNFT: token inesistente");
         _tokenIcalHashes[tokenId] = newIcalHash;
     }
 
@@ -173,7 +173,7 @@ contract PalasirionNFT is
         address,
         uint256
     ) public pure override(ERC721, IERC721) {
-        revert("PalasirionNFT: token non trasferibile");
+        revert("PalasirioNFT: token non trasferibile");
     }
 
     function safeTransferFrom(
@@ -182,7 +182,7 @@ contract PalasirionNFT is
         uint256,
         bytes memory
     ) public pure override(ERC721, IERC721) {
-        revert("PalasirionNFT: token non trasferibile");
+        revert("PalasirioNFT: token non trasferibile");
     }
 
     // ─── Override obbligatori per compatibilità OpenZeppelin ────────────────────
@@ -207,7 +207,7 @@ contract PalasirionNFT is
     function tokenURI(uint256 tokenId)
         public
         view
-        override(ERC721, ERC721URIStorage, IPalasirionNFT)
+        override(ERC721, ERC721URIStorage, IPalasirioNFT)
         returns (string memory)
     {
         return super.tokenURI(tokenId);

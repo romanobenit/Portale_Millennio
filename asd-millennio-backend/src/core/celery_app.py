@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from core.config import get_settings
 
@@ -8,7 +9,7 @@ celery_app = Celery(
     "millennio",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["tasks.mint"],
+    include=["tasks.mint", "tasks.tesseramento"],
 )
 
 celery_app.conf.update(
@@ -29,4 +30,11 @@ celery_app.conf.update(
         "tasks.mint.esegui_mint_task": {"queue": "mint"},
     },
     task_default_queue="celery",
+    # Silenzio-assenso: auto-conferma giornaliera dei tesseramenti scaduti (03:00).
+    beat_schedule={
+        "auto-conferma-tesseramenti": {
+            "task": "tasks.tesseramento.auto_conferma_tesseramenti",
+            "schedule": crontab(hour=3, minute=0),
+        },
+    },
 )

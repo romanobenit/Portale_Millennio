@@ -99,10 +99,18 @@ class CalendarioService:
             ))
         return out
 
-    async def lock_selezione(self, req: LockRequest) -> RiepilogoSelezione:
+    async def lock_selezione(
+        self, req: LockRequest, consenti_gia_bloccato: bool = False
+    ) -> RiepilogoSelezione:
         """
         Blocca le ore selezionate e calcola il prezzo con il motore dinamico.
         Raise 409 se un'ora è già venduta o in lock da altro utente.
+
+        consenti_gia_bloccato=True (usato da NFTService.avvia_acquisto, che
+        estende un lock creato pochi istanti prima da POST /calendario/lock
+        nello stesso flusso di acquisto): non solleva 409 per ore già in
+        ore_in_lock — solo il doppio-vendita reale (ore_vendute) blocca.
+        Senza, il secondo lock dello stesso acquirente si auto-bloccherebbe.
         """
         now = datetime.now(timezone.utc)
         scadenza_lock = now + timedelta(minutes=LOCK_DURATION_MINUTES)
@@ -136,7 +144,7 @@ class CalendarioService:
                         status.HTTP_409_CONFLICT,
                         detail=f"Ora {h}:00 del {slot.data} già venduta",
                     )
-                if h in ore_in_lock:
+                if h in ore_in_lock and not consenti_gia_bloccato:
                     raise HTTPException(
                         status.HTTP_409_CONFLICT,
                         detail=f"Ora {h}:00 del {slot.data} temporaneamente in lock da altro acquirente",

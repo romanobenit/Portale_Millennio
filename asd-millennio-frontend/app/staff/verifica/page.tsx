@@ -35,7 +35,7 @@ export default function VerificaAccessoPage() {
 
   return (
     <div className="max-w-xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Verifica accesso Palasirion</h1>
+      <h1 className="text-2xl font-bold text-gray-900">Verifica accesso Palasirio</h1>
 
       <Card title="Inserisci dati NFT">
         <div className="space-y-4">

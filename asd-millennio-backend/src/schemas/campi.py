@@ -74,6 +74,7 @@ class GiornoDisponibileResponse(BaseModel):
 class PrenotazioneCampoCreate(BaseModel):
     template_id: UUID
     data: date
+    ora_inizio: time  # inizio dello slot da 1 ora scelto (HH:MM)
 
 
 class PrenotazioneCampoResponse(BaseModel):
@@ -102,6 +103,13 @@ class CheckoutCampoResponse(BaseModel):
     campo: int
     importo_eur: Decimal
     bloccata_fino_a: datetime
+
+
+class CheckoutCarrelloResponse(BaseModel):
+    """Pagamento unico di tutto il carrello (più ore/campi in una sola sessione Stripe)."""
+    stripe_checkout_url: str
+    importo_totale: Decimal
+    num_slot: int
 
 
 class CancellazioneCampoResponse(BaseModel):

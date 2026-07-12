@@ -1,7 +1,7 @@
  # ASD Millennio — Piattaforma Digitale MVP
 
-> Piattaforma integrata per la gestione di soci, tessere, calendario Palasirion e raccolta fondi via NFT ERC-721 su Polygon.
-> Sviluppata per **ASD Millennio** (volley · badminton · kung fu · pickleball) — impianto Palasirion, regime ATI.
+> Piattaforma integrata per la gestione di soci, tessere, calendario Palasirio e raccolta fondi via NFT ERC-721 su Polygon.
+> Sviluppata per **ASD Millennio** (volley · badminton · kung fu · pickleball) — impianto Palasirio, regime ATI.
 
 ---
 
@@ -60,7 +60,7 @@
                                                 │
                                     ┌───────────▼──────────┐
                                     │  Polygon (Amoy/PoS)  │
-                                    │  PalasirionNFT.sol   │
+                                    │  PalasirioNFT.sol   │
                                     │  + Pinata IPFS       │
                                     └──────────────────────┘
 ```
@@ -199,7 +199,7 @@ flussocrazia/                          ← root del monorepo locale
 │   └── app/
 │       ├── (auth)/                    ← pagine autenticazione Keycloak
 │       ├── dashboard/                 ← area soci autenticati
-│       ├── staff/                     ← verifica QR Palasirion
+│       ├── staff/                     ← verifica QR Palasirio
 │       └── dirigenza/                 ← dashboard fundraising
 │
 └── asd-millennio-contracts/
@@ -207,14 +207,14 @@ flussocrazia/                          ← root del monorepo locale
     ├── hardhat.config.js              ← networks: amoy, polygon
     ├── .github/workflows/ci.yml       ← compile → test → coverage ≥ 95%
     ├── contracts/
-    │   ├── PalasirionNFT.sol          ← ERC-721 + soulbound + escrow mint
+    │   ├── PalasirioNFT.sol          ← ERC-721 + soulbound + escrow mint
     │   └── interfaces/
-    │       └── IPalasirionNFT.sol
+    │       └── IPalasirioNFT.sol
     ├── scripts/
     │   ├── deploy.js
     │   └── verify.js
     └── test/
-        └── PalasirionNFT.test.js
+        └── PalasirioNFT.test.js
 ```
 
 ---
@@ -278,7 +278,7 @@ STRIPE_PUBLISHABLE_KEY=pk_test_...
 # ─── Blockchain — Polygon Amoy testnet ──────────────────────────
 POLYGON_RPC_URL=https://polygon-amoy.g.alchemy.com/v2/<API_KEY>
 POLYGON_CHAIN_ID=80002
-CONTRACT_ADDRESS_PALASIRION_NFT=0x...
+CONTRACT_ADDRESS_PALASIRIO_NFT=0x...
 MINTER_PRIVATE_KEY=<chiave privata wallet minter — MAI committare>
 
 # ─── IPFS / Pinata ──────────────────────────────────────────────
@@ -450,7 +450,7 @@ Credenziali default Docker Compose: `admin` / `admin`
 |---|---|
 | `socio` | Accesso self-service (tessera, acquisto NFT) |
 | `allenatore` | Presenze, calendario, comunicazioni |
-| `staff` | Tesseramento, verifica QR Palasirion |
+| `staff` | Tesseramento, verifica QR Palasirio |
 | `dirigenza` | Report, dashboard fundraising, approvazioni |
 
 #### MFA obbligatorio per staff e dirigenza
@@ -531,7 +531,7 @@ Esempi: `VOL-2026-00042`, `BDM-2026-00007`, `KFU-2026-00001`, `PCK-2026-00003`
 **Scadenza tessera:** sempre **30 giugno** dell'anno di fine anno sportivo.
 Anno sportivo `2026-2027` → scadenza `2027-06-30`.
 
-### M02 — Calendario Palasirion
+### M02 — Calendario Palasirio
 
 | Method | Path | Auth | Descrizione |
 |---|---|---|---|
@@ -571,7 +571,7 @@ La chiave ATI ha una data di scadenza (`ATI_API_KEY_EXPIRES_AT`). Il backend log
 
 > **Regola critica:** Qualsiasi tentativo di modifica di uno slot con `associazione = 'ati'` restituisce **HTTP 403** indipendentemente dal ruolo del chiamante.
 
-### M04-NFT — Raccolta fondi Palasirion
+### M04-NFT — Raccolta fondi Palasirio
 
 | Method | Path | Auth | Descrizione |
 |---|---|---|---|
@@ -650,10 +650,10 @@ Storage Redis — se Redis non risponde, il limiter degrada silenziosamente (fai
 
 ## 7. Smart contract
 
-### PalasirionNFT.sol
+### PalasirioNFT.sol
 
 **Rete:** Polygon Amoy (testnet, chain ID 80002) → Polygon PoS (mainnet, chain ID 137)
-**Standard:** ERC-721 + ERC721URIStorage + ERC721Enumerable + Ownable + IPalasirionNFT
+**Standard:** ERC-721 + ERC721URIStorage + ERC721Enumerable + Ownable + IPalasirioNFT
 **Caratteristica chiave:** Soulbound-like — trasferimenti bloccati; solo il contratto può trasferire (pattern escrow → socio al momento del mint).
 
 **Funzioni principali:**

@@ -1,5 +1,5 @@
 """
-Task Celery per il mint NFT Palasirion.
+Task Celery per il mint NFT Palasirio.
 
 Flusso:
   conferma_pagamento() → esegui_mint_task.delay(acquisto_id)
@@ -22,6 +22,7 @@ from core.config import get_settings
 from core.database import WorkerSessionLocal
 from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
 from models.slot_calendario import SlotCalendario
+from models.socio import Socio
 from models.tessera import Tessera
 from models.wallet import WalletCustodiale
 from modules.calendario.service import CalendarioService
@@ -92,6 +93,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
             # Se un tentativo precedente ha mintato ma è poi fallito (update_token_uri,
             # IPFS, commit), token_id è già persistito → si riprende senza ri-mintare.
             if acquisto.token_id is None:
+                mint_tx: str | None = None  # hash tx di conio (None sul recupero orfano)
                 # slotKey per-ora "{data}_{fascia}_{ora}" → registrati on-chain:
                 # il contratto reverta se una qualsiasi ora è già prenotata (anti double-sell).
                 slot_keys = [
@@ -116,7 +118,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
                     )
                 else:
                     ical_pre = genera_ical_content(
-                        slots, 0, tessera_id, settings.contract_address_palasirion_nft,
+                        slots, 0, tessera_id, settings.contract_address_palasirio_nft,
                         ore_per_slot=ore_per_slot,
                     )
                     ical_hash_pre = calcola_sha256(ical_pre)
@@ -131,13 +133,15 @@ async def _run_mint(acquisto_id: UUID) -> None:
                         tessera_id=tessera_id,
                     )
                     ipfs_uri_temp = await upload_json_to_ipfs(metadati_pre)
-                    token_id = await mint_nft_with_slots(
+                    token_id, mint_tx = await mint_nft_with_slots(
                         wallet.wallet_address, ipfs_uri_temp, slot_keys, ical_hash_pre,
                     )
 
                 # Persisti SUBITO il token_id (checkpoint): idempotenza retry.
                 acquisto.token_id = token_id
-                acquisto.contract_address = settings.contract_address_palasirion_nft
+                acquisto.contract_address = settings.contract_address_palasirio_nft
+                if mint_tx:
+                    acquisto.mint_tx_hash = mint_tx
                 await db.commit()
             else:
                 token_id = acquisto.token_id
@@ -149,7 +153,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
             # Rigenera iCal/metadati con il token_id reale → IPFS → aggiorna URI on-chain.
             # update_token_uri è ri-eseguibile (idempotente a livello di stato finale).
             ical_content = genera_ical_content(
-                slots, token_id, tessera_id, settings.contract_address_palasirion_nft,
+                slots, token_id, tessera_id, settings.contract_address_palasirio_nft,
                 ore_per_slot=ore_per_slot,
             )
             ical_hash = calcola_sha256(ical_content)
@@ -180,14 +184,64 @@ async def _run_mint(acquisto_id: UUID) -> None:
             for slot in slots:
                 slot.nft_token_id = token_id
 
+            # Cattura i valori PRIMA del commit: dopo il commit gli attributi ORM
+            # sono scaduti e leggerli in contesto async solleverebbe MissingGreenlet.
+            socio_id_cert = acquisto.socio_id
+            importo_cert = float(acquisto.importo_eur)
+
             await db.commit()
             task_logger.info(
                 "NFT mintato con successo: acquisto=%s token_id=%s", acquisto_id, token_id
             )
 
+            # Certificato PDF + email al socio (best-effort: non deve mai far fallire il mint).
+            await _invia_certificato(
+                db, acquisto_id, socio_id_cert, token_id,
+                ore_totali, importo_cert, ical_content,
+            )
+
         except Exception:
             await db.rollback()
             raise
+
+
+async def _invia_certificato(
+    db, acquisto_id: UUID, socio_id: UUID, token_id: int,
+    ore_totali: int, importo_eur: float, ical_content: str,
+) -> None:
+    """Genera il certificato PDF e lo invia via email. Non solleva mai."""
+    try:
+        from modules.nft.certificato_builder import (
+            genera_pdf_certificato,
+            polygonscan_token_url,
+        )
+        from modules.nft.email import invia_certificato_email
+
+        pdf = await genera_pdf_certificato(db, acquisto_id)
+
+        socio = (await db.execute(select(Socio).where(Socio.id == socio_id))).scalar_one_or_none()
+        if not socio or not socio.email:
+            task_logger.warning(
+                "Certificato generato ma socio/email mancante per acquisto %s.", acquisto_id
+            )
+            return
+
+        importo_fmt = f"€ {importo_eur:,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
+        await invia_certificato_email(
+            to=socio.email,
+            nome=socio.nome,
+            token_id=token_id,
+            ore_totali=ore_totali,
+            importo=importo_fmt,
+            polygonscan_url=polygonscan_token_url(settings.contract_address_palasirio_nft, token_id),
+            pdf_bytes=pdf,
+            ical_content=ical_content,
+        )
+    except Exception as cert_err:  # noqa: BLE001
+        task_logger.error(
+            "Certificato/email post-mint non completati per acquisto %s: %s",
+            acquisto_id, cert_err,
+        )
 
 
 async def _segna_fallito(acquisto_id: UUID) -> None:

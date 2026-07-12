@@ -1,16 +1,19 @@
+import { apiClient } from "./client";
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+// Ogni voce è uno SLOT DA 1 ORA (ora_inizio–ora_fine), con i campi liberi in quell'ora.
 export interface GiornoDisponibile {
   data: string;               // YYYY-MM-DD
   template_id: string;
   giorno_settimana: number;
   ora_inizio: string;         // HH:MM:SS
-  ora_fine: string;
+  ora_fine: string;           // HH:MM:SS
   campi_totali: number;
   campi_disponibili: number;
   costo_ora: number;
-  durata_ore: number;
-  importo_totale: number;
+  durata_ore: number;         // sempre 1
+  importo_totale: number;     // = costo_ora
   sport: string[];
 }
 
@@ -32,25 +35,13 @@ export interface PrenotazioneCampo {
   updated_at: string;
 }
 
-export interface CheckoutCampoResponse {
-  prenotazione_id: string;
+export interface CheckoutCarrelloResponse {
   stripe_checkout_url: string;
-  campo: number;
-  importo_eur: number;
-  bloccata_fino_a: string;
+  importo_totale: number;
+  num_slot: number;
 }
 
-async function authFetch(url: string, token: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
-  });
-}
-
+// Disponibilità: endpoint pubblico (nessun token).
 export async function fetchDisponibilita(
   dataInizio: string,
   dataFine: string,
@@ -62,32 +53,36 @@ export async function fetchDisponibilita(
   return res.json();
 }
 
-export async function prenota(
-  token: string,
+// ─── Carrello (chiamate autenticate via apiClient, con auto-refresh token) ───
+
+export async function aggiungiAlCarrello(
   templateId: string,
   data: string,
-): Promise<CheckoutCampoResponse> {
-  const res = await authFetch(`${API}/campi/prenota`, token, {
-    method: "POST",
-    body: JSON.stringify({ template_id: templateId, data }),
+  oraInizio: string,
+): Promise<PrenotazioneCampo> {
+  const res = await apiClient.post<PrenotazioneCampo>("/campi/carrello", {
+    template_id: templateId,
+    data,
+    ora_inizio: oraInizio,
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Errore nella prenotazione");
-  }
-  return res.json();
+  return res.data;
 }
 
-export async function fetchMiePrenotazioni(token: string): Promise<PrenotazioneCampo[]> {
-  const res = await authFetch(`${API}/campi/le-mie-prenotazioni`, token);
-  if (!res.ok) throw new Error("Impossibile caricare le prenotazioni");
-  return res.json();
+export async function fetchCarrello(): Promise<PrenotazioneCampo[]> {
+  const res = await apiClient.get<PrenotazioneCampo[]>("/campi/carrello");
+  return res.data;
 }
 
-export async function cancellaPrenotazione(token: string, id: string): Promise<void> {
-  const res = await authFetch(`${API}/campi/prenota/${id}`, token, { method: "DELETE" });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Errore nella cancellazione");
-  }
+export async function checkoutCarrello(): Promise<CheckoutCarrelloResponse> {
+  const res = await apiClient.post<CheckoutCarrelloResponse>("/campi/carrello/checkout", {});
+  return res.data;
+}
+
+export async function fetchMiePrenotazioni(): Promise<PrenotazioneCampo[]> {
+  const res = await apiClient.get<PrenotazioneCampo[]>("/campi/le-mie-prenotazioni");
+  return res.data;
+}
+
+export async function cancellaPrenotazione(id: string): Promise<void> {
+  await apiClient.delete(`/campi/prenota/${id}`);
 }

@@ -23,7 +23,7 @@ async def upload_json_to_ipfs(metadata: dict) -> str:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{PINATA_BASE}/pinning/pinJSONToIPFS",
-            json={"pinataContent": metadata, "pinataMetadata": {"name": "palasirion-nft"}},
+            json={"pinataContent": metadata, "pinataMetadata": {"name": "palasirio-nft"}},
             headers=_headers(),
         )
         resp.raise_for_status()
@@ -57,10 +57,10 @@ def costruisci_metadati_nft(
 ) -> dict:
     ical_b64 = base64.b64encode(ical_content.encode("utf-8")).decode()
     return {
-        "name": f"Diritto d'uso Palasirion — {slots_count} slot — ASD Millennio",
+        "name": f"Diritto d'uso Palasirio — {slots_count} slot — ASD Millennio",
         "description": (
             "Questo token NON è uno strumento finanziario ai sensi della Direttiva MiFID II. "
-            "Rappresenta esclusivamente il diritto d'uso del Palasirion per le fasce orarie "
+            "Rappresenta esclusivamente il diritto d'uso del Palasirio per le fasce orarie "
             "specificate. Non garantisce rendimenti economici."
         ),
         "attributes": [

@@ -64,7 +64,7 @@ export function DashboardFundraisingWidget() {
       <Card>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Raccolta fondi Palasirion</h2>
+            <h2 className="text-lg font-bold text-gray-900">Raccolta fondi Palasirio</h2>
             <p className="text-xs text-gray-400 mt-0.5">Periodo di vendita: {annoInizio}–{annoFine}</p>
           </div>
           <div className="text-right">

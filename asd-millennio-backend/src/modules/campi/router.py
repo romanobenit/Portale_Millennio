@@ -12,7 +12,7 @@ from models.socio import Socio
 from modules.campi.service import CampiService
 from schemas.campi import (
     CancellazioneCampoResponse,
-    CheckoutCampoResponse,
+    CheckoutCarrelloResponse,
     GiornoDisponibileResponse,
     PrenotazioneCampoCreate,
     PrenotazioneCampoResponse,
@@ -35,29 +35,49 @@ async def disponibilita_campi(
     data_fine: date = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lista giorni disponibili con campi liberi nell'intervallo richiesto."""
-    svc = CampiService(db)
-    return await svc.lista_disponibilita(data_inizio, data_fine)
+    """Slot da 1 ora prenotabili nell'intervallo, con i campi liberi per ogni ora."""
+    return await CampiService(db).lista_disponibilita(data_inizio, data_fine)
 
 
-@router.post("/prenota", response_model=CheckoutCampoResponse)
-async def prenota_campo(
+# ─── Carrello (più ore, un unico pagamento) ─────────────────────────────────
+
+@router.post("/carrello", response_model=PrenotazioneCampoResponse)
+async def aggiungi_al_carrello(
     body: PrenotazioneCampoCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Crea una prenotazione in stato 'bloccata' e restituisce l'URL Stripe Checkout.
-    La prenotazione diventa 'confermata' solo dopo il pagamento (webhook Stripe).
-    """
+    """Blocca un'ora (30 min) e la aggiunge al carrello — nessun pagamento ancora."""
     socio_id = await _get_socio_id(user, db)
-    svc = CampiService(db)
-    return await svc.avvia_prenotazione(
+    return await CampiService(db).aggiungi_al_carrello(
         socio_id=socio_id,
         template_id=body.template_id,
         data=body.data,
+        ora_inizio=body.ora_inizio,
     )
 
+
+@router.get("/carrello", response_model=List[PrenotazioneCampoResponse])
+async def lista_carrello(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Ore bloccate non ancora pagate (carrello). I lock scaduti vengono rilasciati."""
+    socio_id = await _get_socio_id(user, db)
+    return await CampiService(db).lista_carrello(socio_id)
+
+
+@router.post("/carrello/checkout", response_model=CheckoutCarrelloResponse)
+async def checkout_carrello(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Crea un unico Stripe Checkout per tutte le ore nel carrello."""
+    socio_id = await _get_socio_id(user, db)
+    return await CampiService(db).checkout_carrello(socio_id)
+
+
+# ─── Prenotazioni confermate ─────────────────────────────────────────────────
 
 @router.get("/le-mie-prenotazioni", response_model=List[PrenotazioneCampoResponse])
 async def le_mie_prenotazioni(
@@ -65,8 +85,7 @@ async def le_mie_prenotazioni(
     user: dict = Depends(get_current_user),
 ):
     socio_id = await _get_socio_id(user, db)
-    svc = CampiService(db)
-    return await svc.lista_prenotazioni_socio(socio_id)
+    return await CampiService(db).lista_prenotazioni_socio(socio_id)
 
 
 @router.delete("/prenota/{prenotazione_id}", response_model=CancellazioneCampoResponse)
@@ -75,10 +94,10 @@ async def cancella_prenotazione(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    """Rimuove un'ora dal carrello (se bloccata) o cancella una prenotazione confermata."""
     socio_id = await _get_socio_id(user, db)
-    svc = CampiService(db)
-    pren = await svc.cancella_prenotazione(socio_id, prenotazione_id)
+    pren = await CampiService(db).cancella_prenotazione(socio_id, prenotazione_id)
     return CancellazioneCampoResponse(
         prenotazione_id=pren.id,
-        messaggio="Prenotazione cancellata con successo",
+        messaggio="Prenotazione rimossa",
     )

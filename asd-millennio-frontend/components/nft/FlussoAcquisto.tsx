@@ -75,7 +75,7 @@ export function FlussoAcquisto({ riepilogo, onAnnulla, minori = [] }: FlussoAcqu
           <p className="font-semibold mb-1">Dichiarazione legale obbligatoria</p>
           <p>
             Questo token <strong>NON è uno strumento finanziario</strong> ai sensi della Direttiva MiFID II.
-            Rappresenta esclusivamente il diritto d&apos;uso del Palasirion per le ore specificate.
+            Rappresenta esclusivamente il diritto d&apos;uso del Palasirio per le ore specificate.
             Non garantisce rendimenti economici. Il token è personale e non trasferibile.
           </p>
         </div>

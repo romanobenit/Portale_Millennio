@@ -26,6 +26,7 @@ class AcquistoNFT(Base):
     stripe_payment_id = Column(String, nullable=True)
     token_id = Column(Integer, nullable=True)
     contract_address = Column(String, nullable=True)
+    mint_tx_hash = Column(String, nullable=True)  # hash tx di conio su Polygon (per certificato + Polygonscan)
     ipfs_uri = Column(String, nullable=True)
     ical_sha256 = Column(String, nullable=True)
     importo_eur = Column(Numeric(10, 2), nullable=False)

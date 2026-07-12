@@ -3,7 +3,26 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    font-family: system-ui, -apple-system, sans-serif;
+  :root {
+    scroll-behavior: smooth;
+  }
+
+  /* Rispetta le preferenze di riduzione del movimento (accessibilità) */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Offset per l'ancoraggio sotto l'header sticky */
+  [id] {
+    scroll-margin-top: 5rem;
   }
 }

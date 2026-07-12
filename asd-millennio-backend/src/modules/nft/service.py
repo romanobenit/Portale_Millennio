@@ -1,6 +1,6 @@
 import asyncio
 import time as time_module
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import stripe
@@ -16,6 +16,7 @@ from models.tessera import Tessera
 from models.wallet import WalletCustodiale
 from modules.calendario.service import CalendarioService
 from modules.nft.wallet import genera_wallet
+from modules.soci.service import _calcola_scadenza_tessera, _genera_numero_tessera
 from schemas.nft import (
     AcquistoNFTRequest,
     AcquistoNFTResponse,
@@ -91,8 +92,11 @@ class NFTService:
                 for item in data.selezione
             ]
         )
-        # lock_selezione applica il lock ottimistico e calcola il prezzo in un'unica passata
-        riepilogo = await self.cal_service.lock_selezione(lock_req)
+        # lock_selezione applica il lock ottimistico e calcola il prezzo in un'unica passata.
+        # consenti_gia_bloccato=True: il frontend ha già bloccato queste ore con un
+        # POST /calendario/lock precedente (selettore calendario) — questa chiamata
+        # le riestende, non deve auto-bloccarsi sul proprio lock.
+        riepilogo = await self.cal_service.lock_selezione(lock_req, consenti_gia_bloccato=True)
         importo_eur = riepilogo.costo_totale
         slot_ids_lock = [UUID(item["slot_id"]) for item in riepilogo.selezione]
         n_slot = len(data.selezione)
@@ -126,7 +130,7 @@ class NFTService:
                         "currency": "eur",
                         "unit_amount": unit_amount_cents,
                         "product_data": {
-                            "name": f"Diritto d'uso Palasirion — {n_slot} slot",
+                            "name": f"Diritto d'uso Palasirio — {n_slot} slot",
                         },
                     },
                     "quantity": 1,
@@ -201,6 +205,40 @@ class NFTService:
                 detail="Il minore specificato non risulta associato al tuo profilo",
             )
 
+    async def _assicura_tessera_sostenitore(self, socio_id: UUID) -> None:
+        """
+        Emette o rinnova la tessera 'sostenitore' (SOS) del socio pagante, idempotente
+        per anno sportivo. Un acquisto NFT confermato rende automaticamente il socio
+        sostenitore per l'anno sportivo corrente (CLAUDE.md §M01 — Socio sostenitore).
+        """
+        anno = settings.anno_sportivo_corrente
+        result = await self.db.execute(
+            select(Tessera).where(
+                Tessera.socio_id == socio_id,
+                Tessera.sport == "sostenitore",
+                Tessera.anno_sportivo == anno,
+            )
+        )
+        tessera = result.scalar_one_or_none()
+        if tessera:
+            if tessera.stato != "attiva":
+                tessera.stato = "attiva"
+            return
+
+        numero = await _genera_numero_tessera(self.db, "sostenitore", anno)
+        tessera = Tessera(
+            socio_id=socio_id,
+            numero_tessera=numero,
+            sport="sostenitore",
+            stato="attiva",
+            anno_sportivo=anno,
+            data_scadenza=_calcola_scadenza_tessera(anno),
+            data_emissione=date.today(),
+        )
+        self.db.add(tessera)
+        await self.db.flush()
+        tessera.pdf_url = f"{settings.app_url}/api/v1/tessere/{tessera.id}/pdf"
+
     async def conferma_pagamento(self, stripe_session_id: str) -> UUID | None:
         """
         Chiamato dal webhook Stripe dopo checkout.session.completed.
@@ -270,6 +308,7 @@ class NFTService:
             slot.stato = CalendarioService._calcola_stato(slot)
 
         acquisto.stato = "pagato"
+        await self._assicura_tessera_sostenitore(acquisto.socio_id)
         await self.db.flush()
         return acquisto.id
 
@@ -350,7 +389,7 @@ class NFTService:
         result = await self.db.execute(
             select(AcquistoNFT).where(
                 AcquistoNFT.token_id == token_id,
-                AcquistoNFT.contract_address == settings.contract_address_palasirion_nft,
+                AcquistoNFT.contract_address == settings.contract_address_palasirio_nft,
             )
         )
         acquisto = result.scalar_one_or_none()
@@ -417,6 +456,79 @@ class NFTService:
             ),
             checked_at=datetime.now(timezone.utc),
         )
+
+    async def lista_miei_nft(self, socio_id: UUID):
+        """Elenco degli NFT del socio (per la pagina 'I miei NFT'), più recenti prima."""
+        from modules.nft.certificato_builder import polygonscan_token_url
+        from schemas.nft import MioNFTResponse
+
+        acquisti = (await self.db.execute(
+            select(AcquistoNFT)
+            .where(
+                AcquistoNFT.socio_id == socio_id,
+                AcquistoNFT.stato.in_(["pagato", "mintato"]),
+            )
+            .order_by(AcquistoNFT.created_at.desc())
+        )).scalars().all()
+
+        out = []
+        for acq in acquisti:
+            links = (await self.db.execute(
+                select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acq.id)
+            )).scalars().all()
+            ore_totali = sum(len(ln.ore_acquistate or []) for ln in links)
+
+            data_primo = None
+            if links:
+                slot_ids = [ln.slot_calendario_id for ln in links]
+                date_slot = (await self.db.execute(
+                    select(func.min(SlotCalendario.data)).where(SlotCalendario.id.in_(slot_ids))
+                )).scalar_one_or_none()
+                data_primo = date_slot.isoformat() if date_slot else None
+
+            mintato = acq.stato == "mintato" and acq.token_id is not None
+            polygonscan = (
+                polygonscan_token_url(acq.contract_address, acq.token_id)
+                if mintato and acq.contract_address else None
+            )
+            out.append(MioNFTResponse(
+                id=acq.id,
+                token_id=acq.token_id,
+                contract_address=acq.contract_address,
+                mint_tx_hash=acq.mint_tx_hash,
+                ipfs_uri=acq.ipfs_uri,
+                importo_eur=float(acq.importo_eur),
+                ore_totali=ore_totali,
+                stato=acq.stato,
+                data_primo_slot=data_primo,
+                polygonscan_url=polygonscan,
+                certificato_disponibile=mintato,
+                created_at=acq.created_at,
+            ))
+        return out
+
+    async def certificato_pdf(
+        self, acquisto_id: UUID, richiedente_socio_id: UUID | None, is_staff: bool
+    ) -> bytes:
+        """
+        Genera il PDF del certificato di sostegno. Autorizzazione: solo il proprietario
+        dell'acquisto o lo staff. Solleva 403/404/409 in caso contrario.
+        """
+        from modules.nft.certificato_builder import genera_pdf_certificato
+
+        acquisto = (await self.db.execute(
+            select(AcquistoNFT).where(AcquistoNFT.id == acquisto_id)
+        )).scalar_one_or_none()
+        if acquisto is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Acquisto non trovato")
+        if not is_staff and acquisto.socio_id != richiedente_socio_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Permessi insufficienti")
+        if acquisto.stato != "mintato" or acquisto.token_id is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Certificato non ancora disponibile: NFT in fase di generazione.",
+            )
+        return await genera_pdf_certificato(self.db, acquisto_id)
 
     async def dashboard_fundraising(self) -> DashboardFundraisingResponse:
         result = await self.db.execute(

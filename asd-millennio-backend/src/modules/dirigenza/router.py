@@ -7,6 +7,7 @@ from core.database import get_db
 from core.rate_limit import limiter
 from core.security import get_current_user
 from modules.dirigenza.service import DirigenzaService
+from modules.soci.tesseramento_service import TesseramentoService
 from schemas.dirigenza import (
     DashboardFundraising,
     PricingRuleCreate,
@@ -16,6 +17,7 @@ from schemas.dirigenza import (
     SimulazioneRequest,
     SimulazioneResponse,
 )
+from schemas.tesseramento import QuotaCreate, QuotaResponse, QuotaUpdate
 
 router = APIRouter(prefix="/dirigenza", tags=["Dirigenza"])
 
@@ -116,3 +118,39 @@ async def rendiconto(
     db: AsyncSession = Depends(get_db),
 ):
     return await DirigenzaService(db).rendiconto_annuale(anno)
+
+
+# ─── Quote tessera (dirigenza) ─────────────────────────────────────────────────
+
+@router.get("/quote-tessera", response_model=list[QuotaResponse])
+@limiter.limit("60/minute")
+async def lista_quote(
+    request: Request,
+    anno_sportivo: str | None = Query(None),
+    _user: dict = Depends(_require_dirigenza),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TesseramentoService(db).lista_quote(anno_sportivo)
+
+
+@router.post("/quote-tessera", response_model=QuotaResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
+async def crea_quota(
+    request: Request,
+    data: QuotaCreate,
+    _user: dict = Depends(_require_dirigenza),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TesseramentoService(db).crea_quota(data)
+
+
+@router.put("/quote-tessera/{quota_id}", response_model=QuotaResponse)
+@limiter.limit("30/minute")
+async def aggiorna_quota(
+    request: Request,
+    quota_id: uuid.UUID,
+    data: QuotaUpdate,
+    _user: dict = Depends(_require_dirigenza),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TesseramentoService(db).aggiorna_quota(quota_id, data)

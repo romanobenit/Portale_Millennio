@@ -11,7 +11,7 @@ from modules.nft.wallet import get_account_from_encrypted
 
 settings = get_settings()
 
-PALASIRION_NFT_ABI = [
+PALASIRIO_NFT_ABI = [
     {
         "inputs": [{"name": "to", "type": "address"}, {"name": "tokenURI", "type": "string"}],
         "name": "mintNFT",
@@ -107,8 +107,8 @@ async def _web3():
 
 def _contract(w3: AsyncWeb3):
     return w3.eth.contract(
-        address=Web3.to_checksum_address(settings.contract_address_palasirion_nft),
-        abi=PALASIRION_NFT_ABI,
+        address=Web3.to_checksum_address(settings.contract_address_palasirio_nft),
+        abi=PALASIRIO_NFT_ABI,
     )
 
 
@@ -120,7 +120,7 @@ def _extract_token_id_from_receipt(receipt) -> int:
     transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)").hex()
     for log_entry in receipt.logs:
         if (
-            log_entry["address"].lower() == settings.contract_address_palasirion_nft.lower()
+            log_entry["address"].lower() == settings.contract_address_palasirio_nft.lower()
             and len(log_entry["topics"]) == 4
             and log_entry["topics"][0].hex() == transfer_topic
         ):
@@ -173,12 +173,15 @@ async def mint_nft_with_slots(
     token_uri: str,
     slot_keys: list[str],
     ical_hash: str,
-) -> int:
+) -> tuple[int, str]:
     """
     Minta un NFT prenotando PIÙ slot per-ora (anti double-sell on-chain).
     Firmata dal MINTER del contratto (owner ASD, chiave RAW come update_token_uri),
     NON dal wallet del socio che non è autorizzato a mintare; il token è emesso
     verso il wallet custodiale del socio. Reverta on-chain se un slotKey è già preso.
+
+    Restituisce (token_id, tx_hash): l'hash della tx di conio serve al certificato
+    di sostegno e al link Polygonscan.
     """
     async with _web3() as w3:
         minter = Account.from_key(settings.minter_private_key)
@@ -212,8 +215,9 @@ async def mint_nft_with_slots(
             raise RuntimeError(f"Transazione mintNFTWithSlots fallita: {tx_hash.hex()}")
 
         token_id = _extract_token_id_from_receipt(receipt)
-        logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d", token_id, len(slot_keys))
-        return token_id
+        tx_hex = Web3.to_hex(tx_hash)  # sempre 0x-prefissato, indipendente dalla versione hexbytes
+        logger.info("Token ID (mintWithSlots) estratto: %d, slot=%d, tx=%s", token_id, len(slot_keys), tx_hex)
+        return token_id, tx_hex
 
 
 async def update_token_uri(token_id: int, new_uri: str, new_ical_hash: str) -> None:
