@@ -1,6 +1,6 @@
 # HANDOFF — ASD Millennio MVP
 
-> Passaggio di consegne auto-contenuto. **Aggiornato il 2026-07-05** · branch `fix/p0-payment-mint`.
+> Passaggio di consegne auto-contenuto. **Aggiornato il 2026-07-12** · branch `fix/p0-payment-mint`.
 > Leggere insieme a `CLAUDE.md` (intero) e alla memoria in
 > `C:\Users\Romano\.claude\projects\F--millennio-flussocrazia\memory\` (`MEMORY.md` è l'indice).
 
@@ -11,19 +11,17 @@
 - **Ruoli Keycloak**: `socio`, `allenatore`, `staff`, `dirigenza`, `pubblico`.
 - **Scope MVP**: M01 Soci · M02 Calendario/Palasirio · M03 Auth · M04-NFT · (+) Prenotazione campi. **Fuori scope** (non implementare): Flussocrazia Civica, M04-STD, M05–M10.
 
-# STATO ATTUALE (2026-07-05)
+# STATO ATTUALE (2026-07-12)
 
-Stack **completo e funzionante in locale** (Docker Compose, tutti i container up). Rispetto all'handoff precedente (2026-06-20):
+Stack **completo e funzionante in locale** (Docker Compose, tutti i container up). Base solida (P0–P3, rename Palasirio, carrello campi, area dirigenza) invariata; sopra è stata aggiunta molta roba in questa sessione.
 
-- ✅ **Login Keycloak end-to-end funziona** (realm ricreato, utente reale con ruoli, socio collegato con tessera attiva — vedi §KEYCLOAK).
-- ✅ **Rename Palasirion → Palasirio** completato ovunque (codice, contratto `PalasirioNFT`, env var `CONTRACT_ADDRESS_PALASIRIO_NFT`, docs). Contratto ricompila.
-- ✅ **Prenotazione campi ridisegnata**: prenotazione **per singola ora** + **carrello con pagamento unico** (vedi §PRENOTAZIONE CAMPI).
-- ✅ **Area dirigenza** navigabile e funzionante (auth gate, chrome condivisa, fix dashboard).
-- ✅ **Dati Docker spostati su F:** per disco C: pieno (vedi §GOTCHA).
+**Novità sessione 2026-07-09 → 12 (tutto committato e pushato):**
+- ✅ **Socio sostenitore** (`Tessera.sport='sostenitore'`, prefisso `SOS`): emesso automaticamente alla conferma di un acquisto NFT (sul socio pagante, mai sul minore), idempotente per anno. Commit `bb80f26`.
+- ✅ **Certificato di sostegno PDF** (celebrativo A4, 2 pagine, **logo ASD Millennio** vettoriale via `svglib`) generato alla conferma del mint + **email Resend** (PDF+iCal) + pagina **"Il mio sostegno"** (`/dashboard/miei-nft`). Nuova colonna `acquisti_nft.mint_tx_hash`. Commit `6475779`, `29a706d`.
+- ✅ **Auto-tesseramento self-service (adulti e minori)** — feature grande, 5 fasi, commit `f36d036`. Vedi §AUTO-TESSERAMENTO.
+- 🐛 **Fix trovati in UAT** (dentro i commit sopra): webhook Stripe andava sempre in 500 (`dict(event)`/`.get()` incompatibili con stripe-python 15 → usa body grezzo + `.to_dict()`); lock ore NFT si auto-bloccava ad ogni acquisto (`consenti_gia_bloccato`); `campi._verifica_tessera` esplodeva con socio a 2 tessere attive (`scalars().first()`); carrello campi ottimistico (feedback immediato + toast); `APP_URL` allineato a `:3000`.
 
-✅ **Lavoro committato e pushato**: commit `efb8cdd` (99 file, +5574/−767) sul branch `fix/p0-payment-mint`, pushato su `origin` (`romanobenit/Portale_Millennio`). **PR `fix/p0-payment-mint` → `main` NON ancora aperta** (`gh` non installato → aprirla a mano: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint).
-
-✅ **"Socio sostenitore" IMPLEMENTATO** (2026-07-09, working tree — non ancora committato): vedi §SOCIO SOSTENITORE per i dettagli. Verificato con test unitari + smoke reale contro il DB del container (`_assicura_tessera_sostenitore` idempotente).
+✅ **Committato e pushato** su `origin/fix/p0-payment-mint`: 4 nuovi commit (`bb80f26`, `6475779`, `29a706d`, `f36d036`) oltre a `efb8cdd`. Branch **11 commit avanti** su `main`. **PR NON ancora aperta** (`gh` non installato → aprirla a mano, form pre-compilato: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint?expand=1).
 
 # TECH STACK
 
@@ -107,13 +105,14 @@ Il realm era andato perso col DB → ricreato via API. **È stato esportato** in
 - DB `millennio` (+ `keycloak`). Tabelle: `soci`, `tessere`, `consensi`, `slot_calendario`, `pricing_rules`, `acquisti_nft` (+`acquisto_nft_slots`, `accesso_log`), `wallet_custodiali`, `webhook_log`, `slot_template_campo`, `prenotazioni_campo`.
 - Relazioni: `acquisti_nft` —N:M via `acquisto_nft_slots(ore_acquistate INT[])`— `slot_calendario`; `tessere/wallet/acquisti/prenotazioni` → `soci`; `prenotazioni_campo` → `slot_template_campo`.
 - Vincoli: `acquisti_nft.stripe_session_id` UNIQUE; `uq_acquisti_nft_contract_token UNIQUE(contract_address, token_id)`. **`prenotazioni_campo.stripe_session_id` NON è più UNIQUE** (rimosso per il carrello → indice normale).
-- **Migrazioni Alembic (head = `20260711_120000`)**: `…120000_create_soci` → `130000_calendario_nft` → `140000_update_pricing` → `150000_stripe_payment_id_index` → `20260614_200000_add_campi_prenotazioni` → `20260620_120000_token_id_unique_per_contract` → `20260705_120000_drop_prenotazione_session_unique` → **`20260711_120000_add_mint_tx_hash`** (nuova: colonna `acquisti_nft.mint_tx_hash`). Il DB in esecuzione è stampato a `20260711_120000`.
+- **Migrazioni Alembic (head = `20260711_140000`)**: `…` → `20260705_120000_drop_prenotazione_session_unique` → `20260711_120000_add_mint_tx_hash` (colonna `acquisti_nft.mint_tx_hash`) → **`20260711_140000_tesseramento_onboarding`** (campi verifica su `tessere`; nuove tabelle `documenti_socio`, `quote_tessera`, `pagamento_tessera`). Il DB in esecuzione è stampato a `20260711_140000`. Ricorda `alembic upgrade head` dopo un rebuild.
+- **Nuove tabelle** (auto-tesseramento): `documenti_socio` (metadati documenti cifrati), `quote_tessera` (quote dirigenza), `pagamento_tessera` (pagamento quota Stripe; stato `erogazione_liberale` sui rifiuti). `tessere` ha ora `verifica_stato / verifica_scadenza / verificata_da / verificata_at`.
 - `alembic` nel container: `docker exec <backend> sh -c "cd /app && alembic upgrade head"`.
 
 # FUNZIONALITÀ IMPLEMENTATE
 
 - **M03 Auth**: JWT Keycloak (PyJWKClient), ruoli, `RequireDirigenza/Staff/Socio`. **Login e2e funzionante.**
-- **M01 Soci/Tessere**: CRUD, numero tessera (`FOR UPDATE`), PDF+QR, import CSV (savepoint/riga), consensi GDPR, verifica tessera pubblica.
+- **M01 Soci/Tessere**: CRUD, numero tessera (`FOR UPDATE`), PDF+QR, import CSV (savepoint/riga), consensi GDPR, verifica tessera pubblica, categoria **sostenitore** (§dedicata), **auto-tesseramento self-service** adulti+minori (§AUTO-TESSERAMENTO).
 - **M02 Calendario/Pricing**: slot Lun-Ven 00:00–14:59, disponibilità con prezzo dinamico, lock 30 min, motore pricing (leva_data × scarsità-per-mese × sconto), simulatore, CRUD pricing rules.
 - **M04-NFT**: acquisto→Stripe→webhook→mint, wallet custodiali AES-256-GCM, iCal+SHA-256, metadati IPFS, verifica accesso per-ora, dashboard fundraising (**fix query 30gg**), rendiconto annuale.
 - **Certificato di sostegno (PDF)** — implementato 2026-07-11: alla conferma del mint viene generato un certificato celebrativo A4 (2 pagine: attestato con dati on-chain + Allegato A con elenco ore) e inviato via **Resend** con PDF + iCal in allegato. Scaricabile anche da **"I miei NFT"** (`/dashboard/miei-nft`). Backend: `modules/nft/certificato.py` (reportlab, disegno su canvas), `certificato_builder.py` (assembla da DB), `email.py` (Resend REST via httpx, no-op se `RESEND_API_KEY` vuota). Endpoint `GET /nft/le-mie` e `GET /nft/{id}/certificato` (owner o staff). Nuova colonna `acquisti_nft.mint_tx_hash` (migration `20260711_120000`) popolata dal worker; `mint_nft_with_slots` ora ritorna `(token_id, tx_hash)`. Token storici (pre-feature) mostrano "—" alla voce transazione di conio.
@@ -139,9 +138,29 @@ Il "socio sostenitore" è una **categoria di tessera** (`Tessera.sport = 'sosten
 - `pytest src/tests/unit/test_nft_service.py` — 10/10 (2 nuovi test: emissione + idempotenza; test 8 aggiornato per le query aggiuntive).
 - Smoke reale contro il DB del container `backend` (script temporaneo, poi rimosso): prima chiamata crea `SOS-2026-00001` attiva con scadenza `2027-06-30` e `pdf_url`; seconda chiamata non duplica (1 sola riga).
 - Immagine `backend` ricostruita e riavviata con il nuovo codice (`docker compose build backend && up -d backend`) — healthy, nessun errore di import.
-- **Non ancora committato** — nel working tree insieme a questo handoff.
+- **Committato** in `bb80f26`.
+
+# AUTO-TESSERAMENTO SELF-SERVICE (IMPLEMENTATO — 2026-07-12, commit `f36d036`)
+
+Onboarding al primo accesso per chi deve tesserarsi (adulto) o tesserare un figlio minorenne. Flusso **ibrido: paga → attiva provvisoria → verifica staff** (decisioni concordate con l'utente).
+
+**Flusso adulto**: login Keycloak (registrazione **aperta a tutti**) → `/soci/me` 404 → il `dashboard/layout` reindirizza al **wizard `/dashboard/onboarding`** (anagrafica + **upload documento identità** + consenso privacy/trattamento) → **paga la quota** (Stripe) → tessera **`attiva` provvisoria** (`verifica_stato='in_verifica'`, scadenza +30gg, accesso pieno ai benefici da subito).
+
+**Flusso minore** (`/dashboard/minori`): il tutore aggiunge il figlio (`POST /soci/me/minori`, **nessun login proprio**, email sintetica) → upload **identità + tutela** + **doppio consenso** (privacy, trattamento, foto_video firmati dal tutore) → il tutore paga la quota minore.
+
+**Verifica staff** (`/dirigenza/tesseramenti`): coda dei tesseramenti provvisori → **Conferma** oppure **Rifiuta**. Rifiuto = tessera `sospesa` + quota **erogazione liberale** (niente rimborso, flag su `pagamento_tessera`, NON il modulo M04-STD). **Nessuna azione a 30gg → auto-conferma** (silenzio-assenso) via **Celery beat** (`tasks/tesseramento.py`, worker con `-B`, ogni giorno 03:00).
+
+**Quote** (`/dirigenza/quote`): gestite dalla dirigenza (`quote_tessera`), variabili per categoria (sport/sostenitore) e adulto/minore. ⚠️ **Senza almeno una quota attiva il tesseramento si blocca** con "Quota non configurata".
+
+**Tecnica**: endpoint self `POST /soci/me`, `/me/documenti`, `/me/tesseramento`, `/me/minori(+/{id}/tesseramento)`; staff `GET/POST /soci/verifiche…`; dirigenza `GET/POST/PUT /dirigenza/quote-tessera`. Documenti sensibili **cifrati AES-256** (`core/storage.py`) su **volume Docker privato `documenti_data` → `/data/documenti`** (chiave `DOCUMENT_ENCRYPTION_KEY`, fallback `WALLET_ENCRYPTION_KEY`); download gated owner/tutore/staff. Validazione **checksum CF** (`modules/soci/codice_fiscale.py`). Branch webhook `tipo=tessera`. Service centrale: `modules/soci/tesseramento_service.py`. 24 unit test (`test_tesseramento.py`), tutte le 5 fasi verificate e2e nel container.
 
 # GOTCHA / KNOWN ISSUES (aggiornati)
+
+- **Auto-tesseramento — configurare le quote**: dopo il deploy, la dirigenza DEVE creare almeno una `quote_tessera` (pagina `/dirigenza/quote`), altrimenti l'onboarding fallisce con "Quota non configurata".
+- **Nuovo volume `documenti_data`**: montato su `backend` (`/data/documenti`), contiene i documenti sensibili cifrati. Va incluso nei backup (con retention e cancellazione GDPR). `DOCUMENT_ENCRYPTION_KEY` in `.env` (o usa `WALLET_ENCRYPTION_KEY`).
+- **Celery beat embedded (`-B`)**: l'auto-conferma gira sul `celery-worker` con beat embedded (worker singolo → nessun doppio scheduling). Schedule su `/tmp/celerybeat-schedule`.
+- **`RESEND_API_KEY` vuota**: l'email del certificato (e le future notifiche) è un no-op finché la chiave non è impostata. Il PDF resta scaricabile.
+- **Erogazione liberale**: implementata come flag minimo su `pagamento_tessera.stato`, NON è il modulo donazioni M04-STD (che resta fuori scope).
 
 - **Docker su F:**: il disco C: si era riempito → la distro WSL2 `docker-desktop-data` (~50 GB) è stata spostata su `F:\DockerData\wsl\data`. Il `BasePath` nel registro (`HKCU\...\Lxss\{11aeb12d-...}`) punta lì. Se Docker non trova i dati, controllare quel BasePath. Cartella progetto e dati Docker sono entrambi su F:.
 - **postgres lento all'avvio dopo riavvio PC**: fa recovery/fsync (60–160s) → Keycloak/backend aspettano. Se apri l'app subito → `ERR_EMPTY_RESPONSE`/401 vari. Aspettare ~1–2 min, oppure fare `docker compose stop` prima di spegnere il PC.
@@ -176,20 +195,21 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 
 # NEXT STEPS (priorità)
 
-1. **Committare** "Socio sostenitore" (working tree pronto: backend + frontend + CLAUDE.md + test) e poi **aprire la PR** `fix/p0-payment-mint` → `main` (commit `efb8cdd` già pushato; `gh` non installato → a mano: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint).
-2. **Disattivare la registrazione self-service** Keycloak e valutare l'export del realm come `--import-realm` permanente in compose.
-3. **Decidere** privilege escalation staff→dirigenza; **mitigare** leak PII pubblico (GDPR).
-4. **Ruotare** la chiave minter Amoy.
-5. **Configurare `RESEND_API_KEY`** (root `.env` + `asd-millennio-backend/.env`): oggi è **vuota** → l'email del certificato è un no-op (logga warning, il PDF resta scaricabile da "I miei NFT"). Con la chiave, l'invio automatico parte. Estendere Resend anche a refund/scadenze.
-6. **UAT** flusso completo (checkout Stripe reale) + DPIA + audit contratto pre-mainnet.
-7. **Test** automatici prenotazione campi (carrello) + integration webhook.
+1. **Aprire la PR** `fix/p0-payment-mint` → `main` (branch pushato, 11 commit avanti; `gh` non installato → form pre-compilato: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint?expand=1).
+2. **Configurare le quote** dalla dashboard dirigenza (`/dirigenza/quote`) — senza, l'auto-tesseramento si blocca.
+3. **Configurare `RESEND_API_KEY`** (root `.env` + `asd-millennio-backend/.env`): oggi **vuota** → email certificato/tesseramento no-op (PDF resta scaricabile). Estendere Resend a refund/scadenze/notifiche verifica.
+4. **Ruotare** la chiave minter Amoy (esposta in dev).
+5. **Decidere** privilege escalation staff→dirigenza; **mitigare** leak PII pubblico su `/tessere/{id}/verifica` e `/pdf` (GDPR).
+6. **UAT** end-to-end via browser (onboarding adulto + minore con checkout Stripe reale; verifica staff; auto-conferma) + DPIA (M01 tratta ora documenti d'identità!) + audit contratto pre-mainnet.
+7. **Test** automatici integration (webhook Stripe tessera+nft con DB) + e2e frontend.
+8. **Backup del volume `documenti_data`** (documenti sensibili) nella strategia di backup Hetzner.
 
 # CRITICAL CONTEXT (per una nuova sessione)
 
-1. Leggi `CLAUDE.md` (intero), `MEMORY.md` + i file di memoria, e questo handoff. Verifica `git status` (dovrebbe essere pulito; ultimo commit `efb8cdd` pushato su `fix/p0-payment-mint`), `alembic current` (`20260705_120000`), e che le immagini siano ricostruite con l'ultimo codice.
+1. Leggi `CLAUDE.md` (intero), `MEMORY.md` + i file di memoria, e questo handoff. Verifica `git status` (dovrebbe essere pulito; ultimo commit `f36d036` pushato su `fix/p0-payment-mint`), `alembic current` (`20260711_140000`), e che le immagini siano ricostruite con l'ultimo codice.
 2. **Non fidarti che container/DB siano allineati al codice**: dopo modifiche serve `docker compose build <svc>` + `up -d`. Un `up -d` ricrea dall'immagine e annulla i `docker cp`.
 3. **Contratto Amoy**: `CONTRACT_ADDRESS_PALASIRIO_NFT` nel `.env` root; contratto `PalasirioNFT` (rinominato). Per modifiche al contratto mostra il **diff** e chiedi approvazione (CLAUDE.md §10.5).
 4. **PowerShell** come shell principale; evita here-string `@'...'@` (guard del sandbox) e redirezioni di stderr di comandi nativi.
 5. **Memoria persistente** in `C:\Users\Romano\.claude\projects\F--millennio-flussocrazia\memory\`: `env_docker_disk.md`, `deploy_frontend_keycloak.md`, `project_review_state.md`, `user_profile.md`, `feedback_style.md`.
 
-*Fine handoff — 2026-07-05.*
+*Fine handoff — 2026-07-12.*
