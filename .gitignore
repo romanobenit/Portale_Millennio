@@ -8,6 +8,10 @@
 .env.*.local
 !.env.example
 
+# ----- Documenti sensibili (identità/tutela soci — MAI committare, GDPR) -----
+documenti/
+*.env.local.bak
+
 # ----- Python / Backend -----
 __pycache__/
 *.py[cod]
