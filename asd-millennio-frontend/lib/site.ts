@@ -72,6 +72,17 @@ export interface Disciplina {
   lungo: string;
   /** Foto rappresentativa (in /public/images). Assente = mostra solo l'icona. */
   img?: string;
+  /**
+   * Video di presentazione. Servito da /media (nginx), NON dal bundle Next:
+   * i file pesanti restano fuori dal repo e dall'immagine Docker.
+   */
+  video?: string;
+  /** Fotogramma di anteprima mostrato prima del play. */
+  videoPoster?: string;
+  /** Didascalia sotto al video. */
+  videoDidascalia?: string;
+  /** Video girato in verticale (9:16): va reso in un contenitore ritratto. */
+  videoVerticale?: boolean;
 }
 
 export const discipline: Disciplina[] = [
@@ -113,6 +124,10 @@ export const discipline: Disciplina[] = [
     descr: "Lo sport con la racchetta in più rapida crescita: facile e divertente.",
     lungo:
       "Lo sport con la racchetta in più rapida crescita al mondo: regole semplici, scambi divertenti e adatto davvero a tutti. Perfetto per iniziare a qualsiasi età e mantenersi in movimento.",
+    video: "/media/pickleball-openday.mp4",
+    videoPoster: "/media/pickleball-openday.jpg",
+    videoDidascalia: "Open Day pickleball al Palasirio",
+    videoVerticale: true,
   },
 ];
 
