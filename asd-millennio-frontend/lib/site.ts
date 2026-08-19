@@ -73,6 +73,12 @@ export interface Disciplina {
   /** Foto rappresentativa (in /public/images). Assente = mostra solo l'icona. */
   img?: string;
   /**
+   * Punto di messa a fuoco del ritaglio (CSS object-position), es. "50% 75%".
+   * Serve quando la foto viene ritagliata in un formato diverso dal suo:
+   * senza, il ritaglio e' centrato e puo' tagliare i soggetti.
+   */
+  imgPosizione?: string;
+  /**
    * Video di presentazione. Servito da /media (nginx), NON dal bundle Next:
    * i file pesanti restano fuori dal repo e dall'immagine Docker.
    */
@@ -124,6 +130,11 @@ export const discipline: Disciplina[] = [
     descr: "Lo sport con la racchetta in più rapida crescita: facile e divertente.",
     lungo:
       "Lo sport con la racchetta in più rapida crescita al mondo: regole semplici, scambi divertenti e adatto davvero a tutti. Perfetto per iniziare a qualsiasi età e mantenersi in movimento.",
+    img: "/images/pickleball.jpeg",
+    // La foto e' 4:3 (riempie le card senza ritagli). Nella pagina di dettaglio
+    // il contenitore e' 16/9: il ritaglio va spostato in basso, altrimenti
+    // taglia i piedi al giocatore di destra.
+    imgPosizione: "50% 75%",
     video: "/media/pickleball-openday.mp4",
     videoPoster: "/media/pickleball-openday.jpg",
     videoDidascalia: "Open Day pickleball al Palasirio",

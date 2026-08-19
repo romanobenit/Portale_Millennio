@@ -46,6 +46,7 @@ export default function DisciplinaPage({ params }: { params: Params }) {
                     fill
                     sizes="(max-width: 1024px) 100vw, 66vw"
                     className="object-cover"
+                    style={d.imgPosizione ? { objectPosition: d.imgPosizione } : undefined}
                   />
                 </div>
               ) : (
