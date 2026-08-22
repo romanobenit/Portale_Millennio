@@ -337,11 +337,28 @@ async def registra_consenso(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_own_or_staff(socio_id, user, db)
+
+    socio = await SociRepository(db).get_by_id(socio_id)
+    if not socio:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Socio non trovato")
+
+    # Per un minore il consenso è SEMPRE firmato dal tutore legale (§RF-M01-003):
+    # l'endpoint non si fida del valore inviato dal client e lo forza al tutore.
+    if socio.is_minor:
+        if not socio.tutore_id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Il minore non ha un tutore associato: impossibile registrare il consenso.",
+            )
+        firmato_da = socio.tutore_id
+    else:
+        firmato_da = data.firmato_da or socio_id
+
     consenso = Consenso(
         socio_id=socio_id,
         tipo=data.tipo,
         testo_versione=data.testo_versione,
-        firmato_da=data.firmato_da or socio_id,
+        firmato_da=firmato_da,
         timestamp_firma=datetime.now(timezone.utc),
     )
     db.add(consenso)

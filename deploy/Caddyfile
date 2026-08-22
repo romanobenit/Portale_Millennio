@@ -1,0 +1,38 @@
+# Reverse proxy per il demo remoto (un solo hostname pubblico → 3 servizi).
+# Instrada per path: API backend, Keycloak (solo realms/resources), resto → frontend.
+# L'edge pubblico (Cloudflare) è sempre HTTPS: forziamo X-Forwarded-Proto=https
+# così Keycloak/back generano URL https (evita mixed-content e redirect rotti).
+:80 {
+	encode gzip
+
+	# --- API backend FastAPI: SOLO /api/v1/* ---
+	# (il frontend ha una sua route /api/contatti che NON va inoltrata al backend)
+	handle /api/v1/* {
+		reverse_proxy backend:8000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# --- Keycloak dietro path /auth: espongo solo ciò che serve al login/registrazione ---
+	handle /auth/realms/* {
+		reverse_proxy keycloak:8080 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle /auth/resources/* {
+		reverse_proxy keycloak:8080 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	# tutto il resto sotto /auth (incl. console admin) → NON esposto
+	handle /auth/* {
+		respond "Not found" 404
+	}
+
+	# --- Tutto il resto → frontend Next.js ---
+	handle {
+		reverse_proxy frontend:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+}
