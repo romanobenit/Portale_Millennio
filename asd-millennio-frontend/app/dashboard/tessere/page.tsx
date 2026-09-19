@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getKeycloak } from "@/lib/auth/keycloak";
 import { fetchMe, fetchTessereSocio, Tessera } from "@/lib/api/soci";
 import { clsx } from "clsx";
@@ -74,8 +75,14 @@ export default function TesserePage() {
           <p className="text-gray-500 text-sm">
             Nessuna tessera associata al tuo profilo.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
-            Contatta lo staff per richiedere il tesseramento.
+          <Link
+            href="/dashboard/onboarding"
+            className="inline-block mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 transition-colors"
+          >
+            Inizia il tesseramento
+          </Link>
+          <p className="text-gray-400 text-xs mt-3">
+            oppure contatta lo staff per richiedere il tesseramento.
           </p>
         </div>
       ) : (

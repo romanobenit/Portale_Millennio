@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getKeycloak } from "@/lib/auth/keycloak";
+import { fetchMe } from "@/lib/api/soci";
 import {
   creaProfilo,
   caricaDocumento,
@@ -24,6 +25,7 @@ const STEPS = ["Dati", "Documento", "Consensi", "Categoria e pagamento"];
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(0);
+  const [checkingProfilo, setCheckingProfilo] = useState(true);
   const [busy, setBusy] = useState(false);
   const [socioId, setSocioId] = useState<string | null>(null);
 
@@ -34,10 +36,42 @@ export default function OnboardingPage() {
   const [consensi, setConsensi] = useState({ privacy: false, trattamento_dati: false });
   const [categoria, setCategoria] = useState("volley");
 
+  // Se il profilo esiste già (wizard interrotto dopo lo step 0 in una sessione
+  // precedente), riparti dallo step 1 invece di richiamare creaProfilo — che
+  // altrimenti fallirebbe con 409 "Profilo già esistente" e bloccherebbe
+  // qualunque ripresa del tesseramento.
+  useEffect(() => {
+    fetchMe()
+      .then((socio) => {
+        setSocioId(socio.id);
+        setForm((f) => ({
+          ...f,
+          nome: socio.nome,
+          cognome: socio.cognome,
+          data_nascita: socio.data_nascita,
+          codice_fiscale: socio.codice_fiscale,
+          telefono: socio.telefono ?? "",
+        }));
+        setStep(1);
+      })
+      .catch(() => {
+        // Nessun profilo ancora: primo accesso, si parte dallo step 0.
+      })
+      .finally(() => setCheckingProfilo(false));
+  }, []);
+
   const kc = getKeycloak();
   if (!kc.token) {
     kc.login();
     return null;
+  }
+
+  if (checkingProfilo) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
   }
 
   const set = (k: keyof OnboardingData, v: string) => setForm((f) => ({ ...f, [k]: v }));
