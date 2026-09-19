@@ -87,13 +87,18 @@ async def get_me(
     socio = await repo.get_by_keycloak_id(user["sub"])
 
     if not socio:
-        # Primo accesso dopo creazione manuale dallo staff: cerca per email e collega l'account
+        # Primo accesso dopo creazione manuale dallo staff (es. import CSV): se esiste
+        # già un profilo con la stessa email e non ancora collegato a nessun account,
+        # lo colleghiamo — ma solo con email verificata, altrimenti chi si registra
+        # con l'email di un altro socio potrebbe leggerne il profilo. Un profilo già
+        # collegato a un ALTRO account Keycloak non va mai restituito qui.
         email = user.get("email")
-        if email:
-            socio = await repo.get_by_email(email)
-        if socio and not socio.keycloak_user_id:
-            socio.keycloak_user_id = user["sub"]
-            await db.flush()
+        if email and user.get("email_verified") is True:
+            candidato = await repo.get_by_email(email)
+            if candidato and not candidato.keycloak_user_id:
+                candidato.keycloak_user_id = user["sub"]
+                await db.flush()
+                socio = candidato
 
     if not socio:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Profilo non trovato")
@@ -110,7 +115,9 @@ async def crea_profilo_self(
     db: AsyncSession = Depends(get_db),
 ):
     """Primo accesso: l'adulto crea il proprio profilo (una volta sola)."""
-    return await TesseramentoService(db).crea_profilo_self(user["sub"], user.get("email"), data)
+    return await TesseramentoService(db).crea_profilo_self(
+        user["sub"], user.get("email"), data, email_verified=user.get("email_verified") is True,
+    )
 
 
 async def _socio_target(user: dict, db: AsyncSession, socio_id: UUID | None):

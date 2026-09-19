@@ -81,50 +81,71 @@ async def stripe_webhook(
             acq_to_mint = await nft_service.conferma_pagamento(session_id)
 
     elif event_type == "checkout.session.expired":
-        await nft_service.gestisci_sessione_scaduta(event["data"]["object"]["id"])
+        expired_session = event["data"]["object"]
+        tipo_scaduto = (expired_session.to_dict().get("metadata") or {}).get("tipo", "nft")
+        if tipo_scaduto == "tessera":
+            from modules.soci.tesseramento_service import TesseramentoService
+            await TesseramentoService(db).gestisci_pagamento_fallito(
+                stripe_session_id=expired_session["id"]
+            )
+        else:
+            await nft_service.gestisci_sessione_scaduta(expired_session["id"])
 
     elif event_type == "payment_intent.payment_failed":
         pi_id = event["data"]["object"]["id"]
         logger.warning("Pagamento fallito: %s", pi_id)
         # stripe_payment_id viene impostato solo da checkout.session.completed (successo),
-        # quindi non è disponibile qui. Usiamo acquisto_id dalla metadata del PaymentIntent
-        # (impostata in avvia_acquisto() via payment_intent_data.metadata).
-        from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
-        from models.slot_calendario import SlotCalendario
-        acquisto_id_meta = event["data"]["object"].to_dict().get("metadata", {}).get("acquisto_id")
-        acquisto = None
-        if acquisto_id_meta:
+        # quindi non è disponibile qui. Usiamo la metadata del PaymentIntent, impostata
+        # in avvia_acquisto()/avvia_tesseramento() via payment_intent_data.metadata.
+        pi_meta = event["data"]["object"].to_dict().get("metadata", {})
+        pagamento_tessera_id_meta = pi_meta.get("pagamento_tessera_id")
+        acquisto_id_meta = pi_meta.get("acquisto_id")
+
+        if pagamento_tessera_id_meta:
+            from modules.soci.tesseramento_service import TesseramentoService
             try:
                 from uuid import UUID as _UUID
-                result = await db.execute(
-                    select(AcquistoNFT).where(AcquistoNFT.id == _UUID(acquisto_id_meta))
+                await TesseramentoService(db).gestisci_pagamento_fallito(
+                    pagamento_tessera_id=_UUID(pagamento_tessera_id_meta)
                 )
-                acquisto = result.scalar_one_or_none()
             except Exception as meta_err:
-                logger.error("Errore lettura acquisto_id da metadata PaymentIntent: %s", meta_err)
-        if not acquisto_id_meta:
-            logger.warning("payment_intent.payment_failed: acquisto_id mancante in metadata per PI %s", pi_id)
-        if acquisto and acquisto.stato == "in_attesa_pagamento":
-            acquisto.stato = "fallito"
-            links = await db.execute(
-                select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto.id)
-            )
-            slot_ids = [ln.slot_calendario_id for ln in links.scalars().all()]
-            if slot_ids:
-                slots_res = await db.execute(
-                    select(SlotCalendario).where(SlotCalendario.id.in_(slot_ids))
-                )
-                for slot in slots_res.scalars().all():
-                    slot.ore_in_lock = []
-                    slot.bloccato_fino_a = None
-                    h_inizio = slot.ora_inizio.hour
-                    ore_fascia = set(range(h_inizio, h_inizio + slot.ore_totali))
-                    slot.stato = (
-                        "esaurito" if set(slot.ore_vendute or []) >= ore_fascia
-                        else "parziale" if slot.ore_vendute
-                        else "libero"
+                logger.error("Errore lettura pagamento_tessera_id da metadata PaymentIntent: %s", meta_err)
+        else:
+            from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
+            from models.slot_calendario import SlotCalendario
+            acquisto = None
+            if acquisto_id_meta:
+                try:
+                    from uuid import UUID as _UUID
+                    result = await db.execute(
+                        select(AcquistoNFT).where(AcquistoNFT.id == _UUID(acquisto_id_meta))
                     )
-            await db.flush()
+                    acquisto = result.scalar_one_or_none()
+                except Exception as meta_err:
+                    logger.error("Errore lettura acquisto_id da metadata PaymentIntent: %s", meta_err)
+            if not acquisto_id_meta:
+                logger.warning("payment_intent.payment_failed: acquisto_id mancante in metadata per PI %s", pi_id)
+            if acquisto and acquisto.stato == "in_attesa_pagamento":
+                acquisto.stato = "fallito"
+                links = await db.execute(
+                    select(AcquistoNFTSlot).where(AcquistoNFTSlot.acquisto_nft_id == acquisto.id)
+                )
+                slot_ids = [ln.slot_calendario_id for ln in links.scalars().all()]
+                if slot_ids:
+                    slots_res = await db.execute(
+                        select(SlotCalendario).where(SlotCalendario.id.in_(slot_ids))
+                    )
+                    for slot in slots_res.scalars().all():
+                        slot.ore_in_lock = []
+                        slot.bloccato_fino_a = None
+                        h_inizio = slot.ora_inizio.hour
+                        ore_fascia = set(range(h_inizio, h_inizio + slot.ore_totali))
+                        slot.stato = (
+                            "esaurito" if set(slot.ore_vendute or []) >= ore_fascia
+                            else "parziale" if slot.ore_vendute
+                            else "libero"
+                        )
+                await db.flush()
 
     elif event_type == "charge.refunded":
         charge_obj = event["data"]["object"]

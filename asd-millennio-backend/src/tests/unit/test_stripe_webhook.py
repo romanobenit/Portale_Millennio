@@ -123,6 +123,68 @@ async def test_webhook_payment_failed_legge_metadata_reale():
 
 
 @pytest.mark.asyncio
+async def test_webhook_checkout_expired_tessera_pulisce_placeholder():
+    """checkout.session.expired con tipo=tessera deve ripulire la tessera placeholder, non toccare l'NFT."""
+    from modules.webhooks.stripe_handler import stripe_webhook
+
+    payload_dict = {
+        "id": "evt_test_tessera_expired",
+        "object": "event",
+        "type": "checkout.session.expired",
+        "data": {"object": {
+            "id": "cs_test_tessera",
+            "object": "checkout.session",
+            "metadata": {"tipo": "tessera"},
+        }},
+    }
+    real_event = stripe.Event.construct_from(payload_dict, "sk_test_x")
+
+    db = _mock_db()
+
+    with patch("modules.webhooks.stripe_handler.stripe.Webhook.construct_event", return_value=real_event), \
+         patch("modules.soci.tesseramento_service.TesseramentoService") as MockTess:
+        MockTess.return_value.gestisci_pagamento_fallito = AsyncMock(return_value=None)
+        result = await stripe_webhook(_fake_request(payload_dict), db=db)
+
+    assert result == {"status": "ok"}
+    MockTess.return_value.gestisci_pagamento_fallito.assert_awaited_once_with(
+        stripe_session_id="cs_test_tessera"
+    )
+
+
+@pytest.mark.asyncio
+async def test_webhook_payment_failed_tessera_legge_metadata_pagamento():
+    """payment_intent.payment_failed con pagamento_tessera_id in metadata deve ripulire il tesseramento, non l'NFT."""
+    from modules.webhooks.stripe_handler import stripe_webhook
+
+    pagamento_id = "22222222-2222-2222-2222-222222222222"
+    payload_dict = {
+        "id": "evt_test_pi_failed_tessera",
+        "object": "event",
+        "type": "payment_intent.payment_failed",
+        "data": {"object": {
+            "id": "pi_test_tessera",
+            "object": "payment_intent",
+            "metadata": {"pagamento_tessera_id": pagamento_id},
+        }},
+    }
+    real_event = stripe.Event.construct_from(payload_dict, "sk_test_x")
+
+    db = _mock_db()
+
+    with patch("modules.webhooks.stripe_handler.stripe.Webhook.construct_event", return_value=real_event), \
+         patch("modules.soci.tesseramento_service.TesseramentoService") as MockTess:
+        MockTess.return_value.gestisci_pagamento_fallito = AsyncMock(return_value=None)
+        result = await stripe_webhook(_fake_request(payload_dict), db=db)
+
+    assert result == {"status": "ok"}
+    from uuid import UUID
+    MockTess.return_value.gestisci_pagamento_fallito.assert_awaited_once_with(
+        pagamento_tessera_id=UUID(pagamento_id)
+    )
+
+
+@pytest.mark.asyncio
 async def test_webhook_charge_refunded_legge_payment_intent_reale():
     """charge.refunded legge payment_intent dal charge — stesso pattern .to_dict().get()."""
     from modules.webhooks.stripe_handler import stripe_webhook
