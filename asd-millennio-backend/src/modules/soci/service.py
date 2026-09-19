@@ -200,14 +200,18 @@ class SociService:
         valida = tessera.stato == "attiva" and (
             tessera.data_scadenza is None or tessera.data_scadenza >= date.today()
         )
+        # Endpoint PUBBLICO (nessuna auth): non esporre l'identità completa del socio
+        # — soprattutto per i minori (GDPR). Solo le iniziali per un riscontro visivo.
+        def _iniziale(s: str | None) -> str:
+            return f"{s[0].upper()}." if s else ""
         return TesseraVerificaResponse(
             valida=valida,
             numero_tessera=tessera.numero_tessera,
             sport=tessera.sport,
             stato=tessera.stato,
             data_scadenza=tessera.data_scadenza,
-            socio_nome=socio.nome if socio else "",
-            socio_cognome=socio.cognome if socio else "",
+            socio_nome=_iniziale(socio.nome) if socio else "",
+            socio_cognome=_iniziale(socio.cognome) if socio else "",
         )
 
     async def importa_csv(self, file: UploadFile) -> dict:

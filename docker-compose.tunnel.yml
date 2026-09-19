@@ -1,0 +1,48 @@
+# ── Demo remoto via Cloudflare Tunnel (quick tunnel, EFFIMERO) ──────────────────
+# Aggiunge un reverse proxy (Caddy) + cloudflared, ed espone lo stack su un unico
+# hostname pubblico https://<random>.trycloudflare.com.
+#
+# NON committare come config permanente: è per demo temporanei. Vedi teardown a fine sessione.
+#
+# Uso (dopo aver ricavato l'URL dal log di cloudflared):
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.tunnel.yml up -d caddy cloudflared
+#   # leggere l'URL, poi:
+#   $env:PUBLIC_HOST="<host>.trycloudflare.com"; $env:PUBLIC_URL="https://<host>.trycloudflare.com"
+#   docker compose -f ... -f docker-compose.tunnel.yml up -d keycloak backend
+services:
+  caddy:
+    image: caddy:2-alpine
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - millennio-net
+    depends_on:
+      - frontend
+      - backend
+      - keycloak
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://caddy:80
+    networks:
+      - millennio-net
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+  # Keycloak riconfigurato per stare dietro il proxy sotto /auth con hostname pubblico.
+  keycloak:
+    environment:
+      KC_HOSTNAME: ${PUBLIC_HOST:-localhost}
+      KC_HOSTNAME_PORT: "-1"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY: edge
+
+  # Backend: redirect Stripe verso l'host pubblico + JWKS Keycloak sotto /auth
+  # (Keycloak ora ha KC_HTTP_RELATIVE_PATH=/auth → le chiavi sono su /auth/realms/.../certs).
+  backend:
+    environment:
+      APP_URL: ${PUBLIC_URL:-http://localhost:3000}
+      KEYCLOAK_URL: http://keycloak:8080/auth

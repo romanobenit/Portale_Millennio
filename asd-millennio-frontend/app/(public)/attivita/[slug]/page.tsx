@@ -46,6 +46,7 @@ export default function DisciplinaPage({ params }: { params: Params }) {
                     fill
                     sizes="(max-width: 1024px) 100vw, 66vw"
                     className="object-cover"
+                    style={d.imgPosizione ? { objectPosition: d.imgPosizione } : undefined}
                   />
                 </div>
               ) : (
@@ -58,6 +59,36 @@ export default function DisciplinaPage({ params }: { params: Params }) {
                 Vieni a provare un allenamento: i nostri tecnici ti accoglieranno e ti aiuteranno a
                 trovare il gruppo più adatto a te.
               </p>
+
+              {d.video ? (
+                <figure className="mt-8">
+                  <div
+                    className={`mx-auto overflow-hidden rounded-2xl bg-slate-900 shadow-lg ${
+                      d.videoVerticale ? "max-w-[360px]" : "w-full"
+                    }`}
+                  >
+                    {/* preload="metadata": scarica solo l'intestazione, non tutto il file.
+                        Il poster resta l'anteprima visibile finché non si preme play. */}
+                    <video
+                      className={`w-full ${d.videoVerticale ? "aspect-[9/16]" : "aspect-video"}`}
+                      src={d.video}
+                      poster={d.videoPoster}
+                      controls
+                      preload="metadata"
+                      playsInline
+                    >
+                      Il tuo browser non supporta la riproduzione dei video.{" "}
+                      <a href={d.video}>Scarica il video</a>.
+                    </video>
+                  </div>
+                  {d.videoDidascalia ? (
+                    <figcaption className="mt-3 text-center text-sm text-slate-500">
+                      {d.videoDidascalia}
+                    </figcaption>
+                  ) : null}
+                </figure>
+              ) : null}
+
               <div className="mt-8">
                 <Link
                   href="/attivita"

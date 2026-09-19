@@ -1,6 +1,6 @@
 # HANDOFF — ASD Millennio MVP
 
-> Passaggio di consegne auto-contenuto. **Aggiornato il 2026-07-12** · branch `fix/p0-payment-mint`.
+> Passaggio di consegne auto-contenuto. **Aggiornato il 2026-07-15** · branch `feat/tessera-cr80-e-gdpr-hardening` (parte da `main`, che ora include `fix/p0-payment-mint` via PR #3 merged).
 > Leggere insieme a `CLAUDE.md` (intero) e alla memoria in
 > `C:\Users\Romano\.claude\projects\F--millennio-flussocrazia\memory\` (`MEMORY.md` è l'indice).
 
@@ -21,7 +21,15 @@ Stack **completo e funzionante in locale** (Docker Compose, tutti i container up
 - ✅ **Auto-tesseramento self-service (adulti e minori)** — feature grande, 5 fasi, commit `f36d036`. Vedi §AUTO-TESSERAMENTO.
 - 🐛 **Fix trovati in UAT** (dentro i commit sopra): webhook Stripe andava sempre in 500 (`dict(event)`/`.get()` incompatibili con stripe-python 15 → usa body grezzo + `.to_dict()`); lock ore NFT si auto-bloccava ad ogni acquisto (`consenti_gia_bloccato`); `campi._verifica_tessera` esplodeva con socio a 2 tessere attive (`scalars().first()`); carrello campi ottimistico (feedback immediato + toast); `APP_URL` allineato a `:3000`.
 
-✅ **Committato e pushato** su `origin/fix/p0-payment-mint`: 4 nuovi commit (`bb80f26`, `6475779`, `29a706d`, `f36d036`) oltre a `efb8cdd`. Branch **11 commit avanti** su `main`. **PR NON ancora aperta** (`gh` non installato → aprirla a mano, form pre-compilato: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint?expand=1).
+✅ **PR #3 (`fix/p0-payment-mint` → `main`) MERGED** (tip `main` = `f4be82b`). Il `main` locale può essere indietro: `git pull` per allineare.
+
+**Novità sessione 2026-07-15** (commit su `feat/tessera-cr80-e-gdpr-hardening`, **NON ancora pushato**):
+- ✅ **UAT tesseramento minore** end-to-end (documenti cifrati → consensi → quota Stripe reale → webhook → tessera attiva provvisoria +30gg → verifica staff). Verde.
+- ✅ **RESEND funzionante**: chiave configurata, email certificato NFT inviata e ricevuta. NB dominio `millennioasd.com` **non ancora verificato** in Resend → in prod verificarlo (ora invii solo verso l'email del titolare via `onboarding@resend.dev`).
+- 🐛 **Fix GDPR/authz** (commit `ad04eac`): consenso minore `firmato_da`=tutore (era il minore stesso); `/tessere/{id}/verifica` pubblico maschera nome/cognome a iniziali; `_require_dirigenza` ora solo `dirigenza` (era ammesso anche `staff`).
+- ✨ **Tessera PDF formato carta di credito CR80** (85,60×53,98mm) + **logo ASD Millennio** (commit `3d5d55b`); fix link "Scarica PDF" (usa base API, non il `pdf_url` salvato che poteva puntare a host errato).
+- 🌐 **Demo remoto via Cloudflare quick tunnel** (commit `c21569d`): vedi §DEMO-TUNNEL.
+- ⚠️ **Mint bloccato**: sostegno di `romanoing` (`98475cce…`, 16 slot) fermo su `pagato` perché il **minter è a corto di gas Amoy** — vedi §NEXT STEPS.
 
 # TECH STACK
 
@@ -154,6 +162,16 @@ Onboarding al primo accesso per chi deve tesserarsi (adulto) o tesserare un figl
 
 **Tecnica**: endpoint self `POST /soci/me`, `/me/documenti`, `/me/tesseramento`, `/me/minori(+/{id}/tesseramento)`; staff `GET/POST /soci/verifiche…`; dirigenza `GET/POST/PUT /dirigenza/quote-tessera`. Documenti sensibili **cifrati AES-256** (`core/storage.py`) su **volume Docker privato `documenti_data` → `/data/documenti`** (chiave `DOCUMENT_ENCRYPTION_KEY`, fallback `WALLET_ENCRYPTION_KEY`); download gated owner/tutore/staff. Validazione **checksum CF** (`modules/soci/codice_fiscale.py`). Branch webhook `tipo=tessera`. Service centrale: `modules/soci/tesseramento_service.py`. 24 unit test (`test_tesseramento.py`), tutte le 5 fasi verificate e2e nel container.
 
+# DEMO-TUNNEL (esposizione remota — 2026-07-15)
+
+Per far provare l'app a un utente remoto senza deploy: **quick Cloudflare tunnel** (scelta utente: quick + script, NO named tunnel). Tutto in Docker, nessuna installazione.
+- `docker-compose.tunnel.yml`: aggiunge **caddy** (reverse proxy per-path, `deploy/Caddyfile`: `/api/v1/*`→backend, `/auth/realms|resources/*`→keycloak [console admin bloccata], resto→frontend, forza `X-Forwarded-Proto: https`) + **cloudflared** (`--url http://caddy:80`).
+- **Accendere**: `docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.tunnel.yml up -d caddy cloudflared`, poi **`powershell -File .\deploy\tunnel-apply.ps1`** (rileva l'URL trycloudflare dai log e ri-sincronizza frontend `.env.local`+rebuild, Keycloak `KC_HOSTNAME`/`KC_HTTP_RELATIVE_PATH=/auth`/`KC_PROXY=edge`/`KC_HOSTNAME_PORT=-1`, backend `APP_URL`+`KEYCLOAK_URL=…:8080/auth`, redirect/webOrigins del client).
+- **Spegnere / tornare in locale**: `powershell -File .\deploy\tunnel-down.ps1`.
+- ⚠️ **URL EFFIMERO**: cambia ad **ogni riavvio Docker/cloudflared** → il demo si rompe (config punta all'host vecchio) → rilanciare `tunnel-apply.ps1` e ridistribuire il nuovo link. Sintomo tipico: dashboard bloccata su "Accesso in corso…" (bundle/cookie vecchi in cache → hard-refresh/incognito).
+- ⚠️ **Mentre il tunnel è su, il login locale (`localhost:3000`) è sospeso** (build "sapore tunnel"). Un solo build non serve bene sia localhost sia il tunnel. `redirect_uri=localhost:3000` in un URL Keycloak = si sta usando localhost invece del link pubblico.
+- Gotcha risolti: backend `KEYCLOAK_URL` deve includere `/auth` (sennò JWKS 404 → "token non valido"); `KC_HOSTNAME_PORT=""` fa crashare Keycloak (usare `-1`); `Set-Content -Encoding UTF8` di PS5.1 aggiunge un BOM che rompe gli script sh in container (usare `[IO.File]::WriteAllText`).
+
 # GOTCHA / KNOWN ISSUES (aggiornati)
 
 - **Auto-tesseramento — configurare le quote**: dopo il deploy, la dirigenza DEVE creare almeno una `quote_tessera` (pagina `/dirigenza/quote`), altrimenti l'onboarding fallisce con "Quota non configurata".
@@ -195,14 +213,16 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 
 # NEXT STEPS (priorità)
 
-1. **Aprire la PR** `fix/p0-payment-mint` → `main` (branch pushato, 11 commit avanti; `gh` non installato → form pre-compilato: https://github.com/romanobenit/Portale_Millennio/compare/main...fix/p0-payment-mint?expand=1).
-2. **Configurare le quote** dalla dashboard dirigenza (`/dirigenza/quote`) — senza, l'auto-tesseramento si blocca.
-3. **Configurare `RESEND_API_KEY`** (root `.env` + `asd-millennio-backend/.env`): oggi **vuota** → email certificato/tesseramento no-op (PDF resta scaricabile). Estendere Resend a refund/scadenze/notifiche verifica.
-4. **Ruotare** la chiave minter Amoy (esposta in dev).
-5. **Decidere** privilege escalation staff→dirigenza; **mitigare** leak PII pubblico su `/tessere/{id}/verifica` e `/pdf` (GDPR).
-6. **UAT** end-to-end via browser (onboarding adulto + minore con checkout Stripe reale; verifica staff; auto-conferma) + DPIA (M01 tratta ora documenti d'identità!) + audit contratto pre-mainnet.
+1. **Pushare `feat/tessera-cr80-e-gdpr-hardening` e aprire la PR** verso `main` (4 commit: gitignore documenti, hardening GDPR/authz, tessera CR80+logo, infra tunnel demo). Non ancora pushato.
+2. **Sbloccare il mint di `romanoing`**: il **minter `0x0b1374F8519a4Aa837B5100cF8cB520656b087a4`** (Amoy) è a corto di gas (~0.11 POL, serve ~0.13). **Rifornire dal faucet** (≥1 POL), poi ri-dispatch: `docker compose exec backend python -c "from tasks.mint import esegui_mint_task; esegui_mint_task.delay('98475cce-7f2f-4045-b118-49b1de6f0f4c')"` (idempotente + orphan-safe). Considerare retry backoff + alert saldo minter basso.
+3. **`/tessere/{id}/pdf` pubblico espone ancora PII** (nome+cognome senza auth): serve un **token firmato a scadenza** nel link (tocca FE+BE). `/verifica` è già mitigato (iniziali).
+4. **Ruotare** la chiave minter Amoy (esposta in dev) prima del mainnet.
+5. **Resend in prod**: verificare il dominio `millennioasd.com` per inviare ai soci reali (ora solo verso l'email del titolare via sandbox).
+6. **DPIA** (M01 tratta documenti d'identità) + audit contratto pre-mainnet.
 7. **Test** automatici integration (webhook Stripe tessera+nft con DB) + e2e frontend.
 8. **Backup del volume `documenti_data`** (documenti sensibili) nella strategia di backup Hetzner.
+
+✅ Fatti in questa sessione: PR #3 merged · quote configurate · RESEND funzionante · UAT tesseramento minore · fix consenso minore / PII verifica / authz dirigenza.
 
 # CRITICAL CONTEXT (per una nuova sessione)
 
@@ -212,4 +232,4 @@ Oltre a quelle P0–P3 precedenti (anti double-sell 2 livelli, coda mint conc.1,
 4. **PowerShell** come shell principale; evita here-string `@'...'@` (guard del sandbox) e redirezioni di stderr di comandi nativi.
 5. **Memoria persistente** in `C:\Users\Romano\.claude\projects\F--millennio-flussocrazia\memory\`: `env_docker_disk.md`, `deploy_frontend_keycloak.md`, `project_review_state.md`, `user_profile.md`, `feedback_style.md`.
 
-*Fine handoff — 2026-07-12.*
+*Fine handoff — 2026-07-15.*

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import List
@@ -230,6 +231,8 @@ class CampiService:
     async def checkout_carrello(self, socio_id: UUID) -> CheckoutCarrelloResponse:
         await self._scadi_lock_socio(socio_id)
         now = datetime.now(timezone.utc)
+        # FOR UPDATE sulle righe del carrello: serializza checkout concorrenti dello
+        # stesso socio, così due click non creano due sessioni Stripe pagabili in parallelo.
         r = await self.db.execute(
             select(PrenotazioneCampo, SlotTemplateCampo)
             .join(SlotTemplateCampo, PrenotazioneCampo.template_id == SlotTemplateCampo.id)
@@ -241,10 +244,36 @@ class CampiService:
                 )
             )
             .order_by(PrenotazioneCampo.data, PrenotazioneCampo.ora_inizio)
+            .with_for_update(of=PrenotazioneCampo)
         )
         rows = r.all()
         if not rows:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Carrello vuoto")
+
+        # Anti doppio-pagamento: se queste ore hanno già UNA sessione Stripe ancora
+        # aperta, riusala invece di crearne un'altra; se risulta già pagata, conferma e blocca.
+        session_ids = {p.stripe_session_id for p, _ in rows if p.stripe_session_id}
+        if len(session_ids) == 1 and all(p.stripe_session_id for p, _ in rows):
+            sid = next(iter(session_ids))
+            esito = await self._sessione_stripe_riusabile(sid)
+            if esito == "paid":
+                await self.conferma_pagamento(sid)  # webhook in ritardo: conferma ora
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail="Queste prenotazioni risultano già pagate. Aggiorna la pagina.",
+                )
+            if esito:  # sessione ancora aperta → riusa lo stesso link di pagamento
+                importo = sum((Decimal(p.importo_eur) for p, _ in rows), Decimal("0"))
+                return CheckoutCarrelloResponse(
+                    stripe_checkout_url=esito,
+                    importo_totale=importo.quantize(Decimal("0.01")),
+                    num_slot=len(rows),
+                )
+
+        # Il carrello è cambiato: scado eventuali sessioni vecchie ancora aperte
+        # legate a queste ore, così non restano pagabili in parallelo alla nuova.
+        for sid in session_ids:
+            await self._chiudi_sessione_stripe(sid)
 
         line_items = []
         importo_totale = Decimal("0")
@@ -264,7 +293,8 @@ class CampiService:
                 "quantity": 1,
             })
 
-        session = stripe.checkout.Session.create(
+        session = await asyncio.to_thread(
+            stripe.checkout.Session.create,
             payment_method_types=["card"],
             mode="payment",
             line_items=line_items,
@@ -284,6 +314,33 @@ class CampiService:
             importo_totale=importo_totale.quantize(Decimal("0.01")),
             num_slot=len(rows),
         )
+
+    async def _sessione_stripe_riusabile(self, session_id: str) -> str | None:
+        """
+        Ispeziona una sessione Stripe esistente:
+        - ritorna l'URL se è ancora 'open' (pagabile) → riusabile;
+        - ritorna 'paid' se già pagata/completata;
+        - ritorna None se assente/scaduta/non recuperabile.
+        """
+        try:
+            sess = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Sessione Stripe %s non recuperabile: %s", session_id, e)
+            return None
+        if getattr(sess, "payment_status", None) == "paid" or getattr(sess, "status", None) == "complete":
+            return "paid"
+        if getattr(sess, "status", None) == "open" and getattr(sess, "url", None):
+            return sess.url
+        return None
+
+    async def _chiudi_sessione_stripe(self, session_id: str) -> None:
+        """Scade una sessione Stripe ancora aperta, così non resta pagabile in parallelo."""
+        try:
+            sess = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
+            if getattr(sess, "status", None) == "open":
+                await asyncio.to_thread(stripe.checkout.Session.expire, session_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Impossibile scadere la sessione Stripe %s: %s", session_id, e)
 
     async def conferma_pagamento(self, stripe_session_id: str) -> None:
         """Conferma TUTTE le prenotazioni collegate alla sessione Stripe (carrello)."""

@@ -127,9 +127,9 @@ function TesseraCard({ tessera }: { tessera: Tessera }) {
           </p>
         </div>
 
-        {tessera.pdf_url && tessera.stato === "attiva" && (
+        {tessera.stato === "attiva" && (
           <a
-            href={tessera.pdf_url}
+            href={`${process.env.NEXT_PUBLIC_API_URL}/tessere/${tessera.id}/pdf`}
             target="_blank"
             rel="noreferrer"
             className="shrink-0 text-sm text-blue-600 hover:text-blue-800 font-medium"

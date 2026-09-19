@@ -14,6 +14,7 @@ from uuid import UUID
 import stripe
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
@@ -47,11 +48,17 @@ class TesseramentoService:
 
     # ── profilo ───────────────────────────────────────────────────────────────
 
-    async def crea_profilo_self(self, kc_sub: str, email: str | None, data) -> SocioResponse:
+    async def crea_profilo_self(
+        self, kc_sub: str, email: str | None, data, *, email_verified: bool = False,
+    ) -> SocioResponse:
         """
         Crea il profilo dell'adulto al primo accesso, legato all'account Keycloak.
         Un solo profilo per account; se lo staff aveva già creato il socio con la
-        stessa email, lo collega invece di duplicarlo.
+        stessa email, lo collega invece di duplicarlo — ma SOLO se l'email del
+        token Keycloak è verificata. Senza questo controllo, chiunque conosca
+        l'email di un socio già censito (es. da un'importazione CSV) potrebbe
+        registrarsi con quella email e impossessarsi del suo profilo — tessere,
+        CF e anagrafica comprese, dato che qui sotto li sovrascriviamo.
         """
         if await self.repo.get_by_keycloak_id(kc_sub):
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Profilo già esistente per questo account")
@@ -78,6 +85,15 @@ class TesseramentoService:
         # se lo staff aveva pre-creato il socio con questa email → collega e aggiorna
         esistente = await self.repo.get_by_email(email) if email else None
         if esistente and not esistente.keycloak_user_id:
+            if not email_verified:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Esiste già un profilo associato a questa email, ma il tuo indirizzo "
+                        "non risulta verificato. Verifica l'email nel tuo account oppure "
+                        "contatta l'associazione per collegare il profilo esistente."
+                    ),
+                )
             esistente.keycloak_user_id = kc_sub
             esistente.nome = data.nome
             esistente.cognome = data.cognome
@@ -274,7 +290,18 @@ class TesseramentoService:
             data_emissione=date.today(),
         )
         self.db.add(tessera)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            # Rete di sicurezza contro il TOCTOU del controllo "esistente" sopra:
+            # due richieste concorrenti (doppio click, due tab) possono superarlo
+            # entrambe. L'indice parziale uq_tessere_socio_sport_anno_attiva
+            # (migration 20260919_120000) fa rispettare la regola a livello DB.
+            await self.db.rollback()
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Esiste già una tessera per questa categoria e anno sportivo.",
+            )
 
         pagamento = PagamentoTessera(
             tessera_id=tessera.id,
@@ -348,6 +375,45 @@ class TesseramentoService:
         logger.info("Tessera %s attiva provvisoria (verifica entro %d gg).",
                     pagamento.tessera_id, settings.tesseramento_verifica_giorni)
 
+    async def gestisci_pagamento_fallito(
+        self, *, stripe_session_id: str | None = None, pagamento_tessera_id: UUID | None = None,
+    ) -> None:
+        """
+        Webhook checkout.session.expired / payment_intent.payment_failed (tipo=tessera).
+
+        `avvia_tesseramento` crea la tessera e il pagamento PRIMA che l'utente paghi
+        davvero (per poter creare la sessione Stripe): se il pagamento scade o
+        fallisce, quel placeholder va rimosso, altrimenti il controllo anti-doppione
+        in `avvia_tesseramento` blocca per sempre qualsiasi nuovo tentativo per la
+        stessa categoria/anno sportivo (a differenza del flusso NFT, qui non c'è un
+        endpoint staff per sbloccarlo manualmente).
+        """
+        if pagamento_tessera_id is not None:
+            pagamento = (await self.db.execute(
+                select(PagamentoTessera).where(PagamentoTessera.id == pagamento_tessera_id)
+            )).scalar_one_or_none()
+        elif stripe_session_id is not None:
+            pagamento = (await self.db.execute(
+                select(PagamentoTessera).where(PagamentoTessera.stripe_session_id == stripe_session_id)
+            )).scalar_one_or_none()
+        else:
+            return
+
+        if not pagamento or pagamento.stato != "in_attesa_pagamento":
+            return  # già pagato, già ripulito, o mai esistito: idempotente
+
+        tessera = (await self.db.execute(
+            select(Tessera).where(Tessera.id == pagamento.tessera_id)
+        )).scalar_one_or_none()
+
+        await self.db.delete(pagamento)
+        if tessera and tessera.stato == "in_attesa_pagamento":
+            await self.db.delete(tessera)
+        await self.db.flush()
+        logger.info(
+            "Tesseramento abbandonato/fallito: rimossa tessera placeholder %s (pagamento %s).",
+            tessera.id if tessera else "?", pagamento.id,
+        )
 
     # ── verifica staff ────────────────────────────────────────────────────────
 

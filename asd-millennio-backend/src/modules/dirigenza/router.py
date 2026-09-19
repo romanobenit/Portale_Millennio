@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -23,9 +23,10 @@ router = APIRouter(prefix="/dirigenza", tags=["Dirigenza"])
 
 
 def _require_dirigenza(user: dict = Depends(get_current_user)) -> dict:
+    # Solo 'dirigenza': dashboard/pricing/rendiconto/quote sono riservati (CLAUDE.md §M03).
+    # Lo 'staff' ha i propri endpoint (tesseramento, verifiche, accessi) altrove.
     roles: list[str] = user.get("realm_access", {}).get("roles", [])
-    if "dirigenza" not in roles and "staff" not in roles:
-        from fastapi import HTTPException
+    if "dirigenza" not in roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Accesso riservato alla dirigenza")
     return user
 

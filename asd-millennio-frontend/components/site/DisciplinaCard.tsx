@@ -17,6 +17,7 @@ export function DisciplinaCard({ d }: { d: Disciplina }) {
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
+            style={d.imgPosizione ? { objectPosition: d.imgPosizione } : undefined}
           />
           <span
             className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/90 text-xl shadow-sm"

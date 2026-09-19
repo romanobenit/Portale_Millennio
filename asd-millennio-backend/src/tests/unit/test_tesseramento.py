@@ -25,6 +25,8 @@ def _mock_db():
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
+    db.delete = AsyncMock()
+    db.rollback = AsyncMock()
     return db
 
 
@@ -78,6 +80,62 @@ async def test_profilo_self_422_email_mancante():
     with pytest.raises(HTTPException) as e:
         await svc.crea_profilo_self("kc", None, _onboarding())
     assert e.value.status_code == 422
+
+
+# ── crea_profilo_self: collegamento a profilo esistente per email ─────────────
+
+@pytest.mark.asyncio
+async def test_profilo_self_409_se_esistente_non_verificato():
+    """
+    Un profilo pre-creato dallo staff (es. import CSV) non va MAI collegato/
+    sovrascritto da un login con email non verificata: altrimenti chiunque
+    conosca l'email di un socio potrebbe registrarsi e impossessarsene.
+    """
+    from modules.soci.tesseramento_service import TesseramentoService
+    svc = TesseramentoService(_mock_db())
+    svc.repo.get_by_keycloak_id = AsyncMock(return_value=None)
+    esistente = MagicMock()
+    esistente.keycloak_user_id = None
+    svc.repo.get_by_email = AsyncMock(return_value=esistente)
+    with pytest.raises(HTTPException) as e:
+        await svc.crea_profilo_self("kc", "a@b.it", _onboarding(), email_verified=False)
+    assert e.value.status_code == 409
+    assert esistente.keycloak_user_id is None  # non collegato
+
+
+@pytest.mark.asyncio
+async def test_profilo_self_collega_se_email_verificata():
+    from datetime import datetime
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    class _SocioEsistente:
+        pass
+
+    esistente = _SocioEsistente()
+    esistente.id = uuid4()
+    esistente.keycloak_user_id = None
+    esistente.nome = "Vecchio"
+    esistente.cognome = "Nome"
+    esistente.data_nascita = date(1990, 1, 1)
+    esistente.codice_fiscale = "MRTMTT91D08F205J"
+    esistente.indirizzo = None
+    esistente.email = "a@b.it"
+    esistente.telefono = None
+    esistente.foto_url = None
+    esistente.is_minor = False
+    esistente.tutore_id = None
+    esistente.sport = []
+    esistente.created_at = datetime(2026, 1, 1)
+    esistente.updated_at = datetime(2026, 1, 1)
+
+    svc = TesseramentoService(_mock_db())
+    svc.repo.get_by_keycloak_id = AsyncMock(return_value=None)
+    svc.repo.get_by_email = AsyncMock(return_value=esistente)
+    dati = _onboarding()
+    risultato = await svc.crea_profilo_self("kc-sub", "a@b.it", dati, email_verified=True)
+    assert esistente.keycloak_user_id == "kc-sub"
+    assert esistente.nome == dati.nome
+    assert risultato.nome == dati.nome
 
 
 # ── avvia_tesseramento: blocca senza documento ────────────────────────────────
@@ -139,6 +197,90 @@ async def test_tesseramento_minore_409_senza_doppio_consenso():
         await svc.avvia_tesseramento(minore, "volley", is_minore=True, pagante_socio_id=uuid4())
     assert e.value.status_code == 409
     assert "consenso" in e.value.detail.lower()
+
+
+# ── avvia_tesseramento: race concorrente (indice unico parziale) ──────────────
+
+@pytest.mark.asyncio
+async def test_avvia_tesseramento_409_su_race_concorrente():
+    """
+    Due richieste concorrenti (doppio click, due tab) superano entrambe il
+    controllo applicativo "esistente" (un SELECT senza lock, nessuna riga da
+    bloccare). L'IntegrityError dell'indice unico parziale a livello DB
+    (migration 20260919_120000) deve tradursi in un 409 pulito, non in un 500.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    db = _mock_db()
+    svc = TesseramentoService(db)
+    svc._ha_documento = AsyncMock(return_value=True)
+    svc._consensi_ok = AsyncMock(return_value=True)
+    svc._quota = AsyncMock(return_value=MagicMock(importo_eur=50))
+
+    nessuna_tessera = MagicMock()
+    nessuna_tessera.scalars.return_value.first.return_value = None
+    db.execute = AsyncMock(return_value=nessuna_tessera)
+    db.flush = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("duplicate key")))
+
+    socio = MagicMock(); socio.id = uuid4()
+    with patch(
+        "modules.soci.tesseramento_service._genera_numero_tessera",
+        new=AsyncMock(return_value="VOL-2026-00001"),
+    ):
+        with pytest.raises(HTTPException) as e:
+            await svc.avvia_tesseramento(socio, "volley", is_minore=False)
+    assert e.value.status_code == 409
+    db.rollback.assert_awaited()
+
+
+# ── gestisci_pagamento_fallito: sessione scaduta / pagamento fallito ──────────
+
+@pytest.mark.asyncio
+async def test_gestisci_pagamento_fallito_rimuove_placeholder():
+    """
+    Un checkout abbandonato/fallito deve rimuovere la tessera+pagamento
+    placeholder creati da avvia_tesseramento, altrimenti il controllo
+    anti-doppione blocca per sempre un nuovo tentativo.
+    """
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    pagamento = MagicMock()
+    pagamento.id = uuid4()
+    pagamento.stato = "in_attesa_pagamento"
+    pagamento.tessera_id = uuid4()
+
+    tessera = MagicMock()
+    tessera.id = pagamento.tessera_id
+    tessera.stato = "in_attesa_pagamento"
+
+    db = _mock_db()
+    r1 = MagicMock(); r1.scalar_one_or_none.return_value = pagamento
+    r2 = MagicMock(); r2.scalar_one_or_none.return_value = tessera
+    db.execute = AsyncMock(side_effect=[r1, r2])
+
+    await TesseramentoService(db).gestisci_pagamento_fallito(stripe_session_id="cs_test")
+
+    db.delete.assert_any_call(pagamento)
+    db.delete.assert_any_call(tessera)
+
+
+@pytest.mark.asyncio
+async def test_gestisci_pagamento_fallito_idempotente_se_gia_pagato():
+    """Il webhook di scadenza può arrivare in ritardo, dopo che il pagamento è già confermato: no-op."""
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    pagamento = MagicMock()
+    pagamento.stato = "pagato"
+
+    db = _mock_db()
+    r1 = MagicMock(); r1.scalar_one_or_none.return_value = pagamento
+    db.execute = AsyncMock(return_value=r1)
+
+    await TesseramentoService(db).gestisci_pagamento_fallito(pagamento_tessera_id=uuid4())
+
+    db.delete.assert_not_called()
 
 
 # ── conferma_pagamento_tessera: attiva provvisoria ────────────────────────────
