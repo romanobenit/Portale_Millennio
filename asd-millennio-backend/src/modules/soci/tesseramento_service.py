@@ -191,6 +191,14 @@ class TesseramentoService:
         await self.db.refresh(doc)
         return DocumentoResponse.model_validate(doc)
 
+    async def lista_documenti(self, socio_id: UUID) -> list[DocumentoResponse]:
+        result = await self.db.execute(
+            select(DocumentoSocio)
+            .where(DocumentoSocio.socio_id == socio_id)
+            .order_by(DocumentoSocio.created_at.desc())
+        )
+        return [DocumentoResponse.model_validate(d) for d in result.scalars().all()]
+
     async def carica_certificato_medico(
         self, tessera: Tessera, caricato_da: UUID, tipo: str, scadenza: date,
         filename: str, content_type: str, content: bytes,

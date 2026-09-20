@@ -153,6 +153,17 @@ async def carica_documento_self(
     )
 
 
+@router.get("/me/documenti", response_model=list[DocumentoResponse])
+async def lista_documenti_self(
+    socio_id: UUID | None = Query(None, description="socio destinatario (default: il proprio; per minori il figlio)"),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Elenca i documenti caricati per sé o per un proprio minore."""
+    _me, target = await _socio_target(user, db, socio_id)
+    return await TesseramentoService(db).lista_documenti(target.id)
+
+
 @router.get("/documenti/{doc_id}")
 async def scarica_documento(
     doc_id: UUID,
