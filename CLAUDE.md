@@ -219,17 +219,19 @@ updated_at        TIMESTAMPTZ DEFAULT now()
 **Entità: `Tessera`**
 
 ```
-id                UUID PRIMARY KEY
-socio_id          UUID REFERENCES socio(id)
-numero_tessera    VARCHAR UNIQUE NOT NULL      -- prefisso sport + progressivo
-sport             VARCHAR NOT NULL
-stato             ENUM('bozza','in_attesa_pagamento','attiva','scaduta','sospesa')
-data_emissione    DATE
-data_scadenza     DATE
-anno_sportivo     VARCHAR                      -- es. '2026-2027'
-pdf_url           TEXT                         -- tessera digitale con QR
-created_at        TIMESTAMPTZ DEFAULT now()
-updated_at        TIMESTAMPTZ DEFAULT now()
+id                            UUID PRIMARY KEY
+socio_id                      UUID REFERENCES socio(id)
+numero_tessera                VARCHAR UNIQUE NOT NULL      -- prefisso sport + progressivo
+sport                         VARCHAR NOT NULL
+stato                         ENUM('bozza','in_attesa_pagamento','attiva','scaduta','sospesa')
+data_emissione                DATE
+data_scadenza                 DATE
+anno_sportivo                 VARCHAR                      -- es. '2026-2027'
+pdf_url                       TEXT                         -- tessera digitale con QR
+certificato_medico_tipo       ENUM('non_agonistico','agonistico')  -- NULL = non ancora caricato
+certificato_medico_scadenza   DATE
+created_at                    TIMESTAMPTZ DEFAULT now()
+updated_at                    TIMESTAMPTZ DEFAULT now()
 ```
 
 **Regole business:**
@@ -255,7 +257,16 @@ updated_at        TIMESTAMPTZ DEFAULT now()
   per categoria (sport/sostenitore) e adulto/minore. Documenti sensibili **cifrati AES-256** su volume privato
   (`documenti_data`), scaricabili solo da proprietario/tutore/staff. **Minori**: aggiunti dal tutore
   (`POST /soci/me/minori`), senza login proprio (email sintetica), gestiti dal tutore. CF validato col checksum.
-- Alert automatici scadenza: 30, 15, 7 giorni prima (email + notifica push)
+- **Certificato medico** (`certificato_medico_tipo`/`certificato_medico_scadenza` su `Tessera`): tracciamento
+  **informativo, non bloccante** — non impedisce l'attivazione della tessera, serve solo a distinguere in
+  dashboard dirigenza chi non ha caricato nulla, chi ha il **non agonistico** e chi l'**agonistico**.
+  Caricato **self-service dal socio** (o dal tutore per un minore) via
+  `POST /soci/me/tessere/{tessera_id}/certificato-medico` (tipo + data di scadenza + file), stesso storage
+  cifrato AES-256 dei documenti d'identità/tutela (`DocumentoSocio.tipo='certificato_medico'`). Alert email
+  automatici 30/15/7 giorni prima della scadenza (Celery beat, `tasks/certificato_medico.py`); per i minori
+  l'email va al **tutore** (l'email del minore è sintetica, non reale).
+- Alert automatici scadenza tessera: 30, 15, 7 giorni prima (email + notifica push) — **da implementare**,
+  non ancora presente nel codice (solo il certificato medico ha già il proprio task Celery attivo, sopra)
 - Un socio può avere tessere per sport diversi nello stesso anno
 - Scadenza tessera: sempre il **30 giugno** dell'anno sportivo corrente, indipendentemente
   dalla data di emissione. Anno sportivo corrente: `2026-2027` → scadenza `2027-06-30`.
@@ -923,4 +934,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Giugno 2026 — ASD Millennio Team Dev — v2.0 (pricing dinamico, calendario Lun-Ven 00:00-15:00)*
+*Ultima modifica: Settembre 2026 — ASD Millennio Team Dev — v2.1 (certificato medico su tessera: tipo/scadenza, upload self-service, alert Celery)*
