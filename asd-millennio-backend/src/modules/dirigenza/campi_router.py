@@ -1,7 +1,8 @@
+from datetime import date, timedelta
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,8 @@ from modules.campi.service import CampiService
 from schemas.campi import (
     CampiConfigResponse,
     CampiConfigUpdate,
+    PrenotazioneCampoDirigenzaResponse,
+    RiepilogoCampiDirigenzaResponse,
     SlotTemplateCampoCreate,
     SlotTemplateCampoResponse,
     SlotTemplateCampoUpdate,
@@ -35,6 +38,29 @@ async def aggiorna_config(
     _=RequireDirigenza,
 ):
     return await CampiService(db).aggiorna_config(body.orizzonte_giorni)
+
+
+@router.get("/prenotazioni", response_model=List[PrenotazioneCampoDirigenzaResponse])
+async def lista_prenotazioni(
+    data_inizio: date = Query(default_factory=date.today),
+    data_fine: date = Query(default_factory=lambda: date.today() + timedelta(days=30)),
+    stato: str | None = Query(default=None, description="Filtra per stato; default: tutte tranne 'bloccata'"),
+    db: AsyncSession = Depends(get_db),
+    _=RequireDirigenza,
+):
+    """Prenotazioni campo nel periodo, con socio e sport — per uso quotidiano ("chi viene")."""
+    return await CampiService(db).lista_prenotazioni_dirigenza(data_inizio, data_fine, stato)
+
+
+@router.get("/riepilogo", response_model=RiepilogoCampiDirigenzaResponse)
+async def riepilogo(
+    data_inizio: date = Query(default_factory=date.today),
+    data_fine: date = Query(default_factory=lambda: date.today() + timedelta(days=30)),
+    db: AsyncSession = Depends(get_db),
+    _=RequireDirigenza,
+):
+    """Incassato + occupazione dei campi nel periodo."""
+    return await CampiService(db).riepilogo_dirigenza(data_inizio, data_fine)
 
 
 @router.get("/templates", response_model=List[SlotTemplateCampoResponse])

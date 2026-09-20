@@ -6,7 +6,7 @@ from uuid import UUID
 
 import stripe
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
@@ -14,12 +14,15 @@ from core.logger import logger
 from models.campi_config import CampiConfig
 from models.prenotazione_campo import PrenotazioneCampo
 from models.slot_template_campo import SlotTemplateCampo
+from models.socio import Socio
 from models.tessera import Tessera
 from schemas.campi import (
     CampiConfigResponse,
     CheckoutCarrelloResponse,
     GiornoDisponibileResponse,
+    PrenotazioneCampoDirigenzaResponse,
     PrenotazioneCampoResponse,
+    RiepilogoCampiDirigenzaResponse,
 )
 
 settings = get_settings()
@@ -436,3 +439,91 @@ class CampiService:
             .order_by(PrenotazioneCampo.data, PrenotazioneCampo.ora_inizio)
         )
         return [PrenotazioneCampoResponse.model_validate(p) for p in r.scalars().all()]
+
+    # ─── vista dirigenza ─────────────────────────────────────────────────────
+
+    async def lista_prenotazioni_dirigenza(
+        self, data_inizio: date, data_fine: date, stato: str | None = None
+    ) -> List[PrenotazioneCampoDirigenzaResponse]:
+        """
+        Prenotazioni nel periodo, con socio e sport (join). Default: tutte tranne
+        'bloccata' (carrelli non pagati, non rilevanti per la dirigenza).
+        """
+        q = (
+            select(
+                PrenotazioneCampo,
+                Socio.nome,
+                Socio.cognome,
+                SlotTemplateCampo.sport,
+            )
+            .join(Socio, PrenotazioneCampo.socio_id == Socio.id)
+            .join(SlotTemplateCampo, PrenotazioneCampo.template_id == SlotTemplateCampo.id)
+            .where(
+                and_(
+                    PrenotazioneCampo.data >= data_inizio,
+                    PrenotazioneCampo.data <= data_fine,
+                )
+            )
+        )
+        q = q.where(PrenotazioneCampo.stato == stato) if stato else q.where(PrenotazioneCampo.stato != "bloccata")
+        q = q.order_by(PrenotazioneCampo.data, PrenotazioneCampo.ora_inizio)
+
+        rows = (await self.db.execute(q)).all()
+        return [
+            PrenotazioneCampoDirigenzaResponse(
+                id=p.id,
+                socio_id=p.socio_id,
+                socio_nome=nome,
+                socio_cognome=cognome,
+                data=p.data,
+                ora_inizio=p.ora_inizio,
+                ora_fine=p.ora_fine,
+                campo=p.campo,
+                sport=sport or [],
+                importo_eur=p.importo_eur,
+                stato=p.stato,
+                created_at=p.created_at,
+            )
+            for p, nome, cognome, sport in rows
+        ]
+
+    async def riepilogo_dirigenza(self, data_inizio: date, data_fine: date) -> RiepilogoCampiDirigenzaResponse:
+        """Incassato + occupazione (ore prenotate/confermate su ore totali generabili dai template)."""
+        r = await self.db.execute(
+            select(
+                func.sum(PrenotazioneCampo.importo_eur),
+                func.count(PrenotazioneCampo.id),
+            ).where(
+                and_(
+                    PrenotazioneCampo.stato == "confermata",
+                    PrenotazioneCampo.data >= data_inizio,
+                    PrenotazioneCampo.data <= data_fine,
+                )
+            )
+        )
+        totale_eur, num_confermate = r.one()
+        totale_eur = Decimal(str(totale_eur or 0))
+        num_confermate = int(num_confermate or 0)
+
+        templates = (
+            await self.db.execute(select(SlotTemplateCampo).where(SlotTemplateCampo.attivo == True))  # noqa: E712
+        ).scalars().all()
+        ore_totali = 0
+        current = data_inizio
+        while current <= data_fine:
+            for tmpl in templates:
+                if current.weekday() == tmpl.giorno_settimana and tmpl.valido_dal <= current <= tmpl.valido_fino_al:
+                    ore_totali += tmpl.num_campi * len(self._slot_ore(tmpl))
+            current += timedelta(days=1)
+
+        pct = (num_confermate / ore_totali * 100) if ore_totali else 0.0
+
+        return RiepilogoCampiDirigenzaResponse(
+            data_inizio=data_inizio,
+            data_fine=data_fine,
+            totale_incassato_eur=totale_eur.quantize(Decimal("0.01")),
+            num_prenotazioni_confermate=num_confermate,
+            ore_totali_disponibili=ore_totali,
+            ore_prenotate=num_confermate,
+            pct_occupazione=round(pct, 2),
+        )

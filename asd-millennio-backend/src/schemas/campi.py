@@ -125,3 +125,30 @@ class CampiConfigResponse(BaseModel):
 
 class CampiConfigUpdate(BaseModel):
     orizzonte_giorni: int = Field(ge=1, le=365)
+
+
+# ─── Dirigenza: vista prenotazioni ──────────────────────────────────────────
+
+class PrenotazioneCampoDirigenzaResponse(BaseModel):
+    id: UUID
+    socio_id: UUID
+    socio_nome: str
+    socio_cognome: str
+    data: date
+    ora_inizio: time
+    ora_fine: time
+    campo: int
+    sport: List[str]
+    importo_eur: Decimal
+    stato: str
+    created_at: datetime
+
+
+class RiepilogoCampiDirigenzaResponse(BaseModel):
+    data_inizio: date
+    data_fine: date
+    totale_incassato_eur: Decimal
+    num_prenotazioni_confermate: int
+    ore_totali_disponibili: int
+    ore_prenotate: int
+    pct_occupazione: float

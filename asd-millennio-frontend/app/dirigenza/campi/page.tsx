@@ -8,6 +8,44 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 const GIORNI = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 
+interface PrenotazioneDirigenza {
+  id: string;
+  socio_id: string;
+  socio_nome: string;
+  socio_cognome: string;
+  data: string;
+  ora_inizio: string;
+  ora_fine: string;
+  campo: number;
+  sport: string[];
+  importo_eur: number;
+  stato: "bloccata" | "confermata" | "cancellata" | "scaduta";
+  created_at: string;
+}
+
+interface RiepilogoCampi {
+  data_inizio: string;
+  data_fine: string;
+  totale_incassato_eur: number;
+  num_prenotazioni_confermate: number;
+  ore_totali_disponibili: number;
+  ore_prenotate: number;
+  pct_occupazione: number;
+}
+
+const STATO_PREN_BADGE: Record<string, { label: string; classes: string }> = {
+  confermata: { label: "Confermata", classes: "bg-green-100 text-green-800" },
+  cancellata: { label: "Cancellata", classes: "bg-red-100 text-red-700" },
+  scaduta: { label: "Scaduta", classes: "bg-gray-100 text-gray-600" },
+  bloccata: { label: "In carrello", classes: "bg-yellow-100 text-yellow-800" },
+};
+
+function oggiISO(offsetGiorni = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetGiorni);
+  return d.toISOString().slice(0, 10);
+}
+
 interface SlotTemplate {
   id: string;
   giorno_settimana: number;
@@ -60,6 +98,13 @@ export default function GestioneCampiPage() {
   const [orizzonteGiorni, setOrizzonteGiorni] = useState<number | null>(null);
   const [orizzonteInput, setOrizzonteInput] = useState("");
   const [savingOrizzonte, setSavingOrizzonte] = useState(false);
+
+  const [prenotazioni, setPrenotazioni] = useState<PrenotazioneDirigenza[]>([]);
+  const [riepilogo, setRiepilogo] = useState<RiepilogoCampi | null>(null);
+  const [loadingPrenotazioni, setLoadingPrenotazioni] = useState(true);
+  const [filtroInizio, setFiltroInizio] = useState(oggiISO());
+  const [filtroFine, setFiltroFine] = useState(oggiISO(30));
+  const [filtroStato, setFiltroStato] = useState("");
 
   // Rinfresca il token prima di ogni chiamata (l'access token dura ~5 min → evita 401)
   const authHeader = async () => {
@@ -128,10 +173,36 @@ export default function GestioneCampiPage() {
     }
   };
 
+  const caricaPrenotazioni = async () => {
+    setLoadingPrenotazioni(true);
+    try {
+      const params = new URLSearchParams({ data_inizio: filtroInizio, data_fine: filtroFine });
+      if (filtroStato) params.set("stato", filtroStato);
+      const [resPren, resRiep] = await Promise.all([
+        fetch(`${API}/dirigenza/campi/prenotazioni?${params}`, { headers: { Authorization: await authHeader() } }),
+        fetch(
+          `${API}/dirigenza/campi/riepilogo?data_inizio=${filtroInizio}&data_fine=${filtroFine}`,
+          { headers: { Authorization: await authHeader() } },
+        ),
+      ]);
+      if (!resPren.ok || !resRiep.ok) throw new Error("Errore nel caricamento");
+      setPrenotazioni(await resPren.json());
+      setRiepilogo(await resRiep.json());
+    } catch {
+      /* non blocca il resto della pagina (template) */
+    } finally {
+      setLoadingPrenotazioni(false);
+    }
+  };
+
   useEffect(() => {
     carica();
     caricaOrizzonte();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    caricaPrenotazioni();
+  }, [filtroInizio, filtroFine, filtroStato]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apriNuovo = () => {
     setForm(EMPTY_FORM);
@@ -261,6 +332,124 @@ export default function GestioneCampiPage() {
             <span className="text-xs text-gray-400">Attuale: {orizzonteGiorni} giorni</span>
           )}
         </div>
+      </div>
+
+      {/* ── Prenotazioni: chi viene, incassi, occupazione ─────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Prenotazioni</h2>
+            <p className="text-xs text-gray-500 mt-1">Chi ha prenotato, incassi e occupazione nel periodo</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Dal</label>
+              <input
+                type="date"
+                value={filtroInizio}
+                onChange={(e) => setFiltroInizio(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Al</label>
+              <input
+                type="date"
+                value={filtroFine}
+                onChange={(e) => setFiltroFine(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Stato</label>
+              <select
+                value={filtroStato}
+                onChange={(e) => setFiltroStato(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">Tutte (esclusi carrelli)</option>
+                <option value="confermata">Confermate</option>
+                <option value="cancellata">Cancellate</option>
+                <option value="scaduta">Scadute</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {riepilogo && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Incassato</p>
+              <p className="text-lg font-semibold text-gray-900">€{Number(riepilogo.totale_incassato_eur).toFixed(2)}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Prenotazioni confermate</p>
+              <p className="text-lg font-semibold text-gray-900">{riepilogo.num_prenotazioni_confermate}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Ore prenotate / totali</p>
+              <p className="text-lg font-semibold text-gray-900">
+                {riepilogo.ore_prenotate} / {riepilogo.ore_totali_disponibili}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Occupazione</p>
+              <p className="text-lg font-semibold text-gray-900">{riepilogo.pct_occupazione}%</p>
+            </div>
+          </div>
+        )}
+
+        {loadingPrenotazioni ? (
+          <div className="flex items-center gap-2 text-gray-500 text-sm py-6">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            Caricamento…
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-3 py-2">Data</th>
+                  <th className="px-3 py-2">Ora</th>
+                  <th className="px-3 py-2">Campo</th>
+                  <th className="px-3 py-2">Sport</th>
+                  <th className="px-3 py-2">Socio</th>
+                  <th className="px-3 py-2">Importo</th>
+                  <th className="px-3 py-2">Stato</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {prenotazioni.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
+                      Nessuna prenotazione nel periodo selezionato
+                    </td>
+                  </tr>
+                )}
+                {prenotazioni.map((p) => {
+                  const badge = STATO_PREN_BADGE[p.stato] ?? { label: p.stato, classes: "bg-gray-100 text-gray-700" };
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-900">{p.data}</td>
+                      <td className="px-3 py-2 text-gray-600">
+                        {p.ora_inizio.slice(0, 5)}–{p.ora_fine.slice(0, 5)}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">{p.campo}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.sport.join(", ")}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.socio_nome} {p.socio_cognome}</td>
+                      <td className="px-3 py-2 text-gray-600">€{Number(p.importo_eur).toFixed(2)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badge.classes}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {error && (

@@ -109,3 +109,70 @@ async def test_aggiorna_config_crea_riga_se_assente():
     db = _db_config(None)
     await CampiService(db).aggiorna_config(30)
     db.add.assert_called_once()
+
+
+# ── vista dirigenza: prenotazioni + riepilogo ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lista_prenotazioni_dirigenza_esclude_bloccata_per_default():
+    from datetime import date
+    from modules.campi.service import CampiService
+
+    pren = MagicMock()
+    pren.id = uuid4()
+    pren.socio_id = uuid4()
+    pren.data = date(2026, 10, 1)
+    pren.ora_inizio = "16:30"
+    pren.ora_fine = "17:30"
+    pren.campo = 1
+    pren.importo_eur = 30
+    pren.stato = "confermata"
+    pren.created_at = "2026-09-20T00:00:00Z"
+
+    db = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = [(pren, "Mario", "Rossi", ["volley"])]
+    db.execute = AsyncMock(return_value=result)
+
+    svc = CampiService(db)
+    out = await svc.lista_prenotazioni_dirigenza(date(2026, 10, 1), date(2026, 10, 31))
+
+    assert len(out) == 1
+    assert out[0].socio_nome == "Mario"
+    assert out[0].sport == ["volley"]
+    # verifica che il filtro di default (stato != 'bloccata') sia stato applicato alla query
+    executed_query = str(db.execute.call_args[0][0])
+    assert "bloccata" in executed_query
+
+
+@pytest.mark.asyncio
+async def test_riepilogo_dirigenza_calcola_occupazione():
+    from datetime import date, time
+    from modules.campi.service import CampiService
+
+    # 1 sola prenotazione confermata, €30
+    sum_result = MagicMock()
+    sum_result.one.return_value = (30, 1)
+
+    # 1 template attivo: lunedì, 1 campo, 1 ora di slot (16:00-17:00)
+    tmpl = MagicMock()
+    tmpl.giorno_settimana = 0  # lunedì
+    tmpl.valido_dal = date(2026, 1, 1)
+    tmpl.valido_fino_al = date(2027, 12, 31)
+    tmpl.num_campi = 1
+    tmpl.ora_inizio = time(16, 0)
+    tmpl.ora_fine = time(17, 0)
+    templates_result = MagicMock()
+    templates_result.scalars.return_value.all.return_value = [tmpl]
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[sum_result, templates_result])
+
+    svc = CampiService(db)
+    # Un solo lunedì nel periodo → 1 campo × 1 slot = 1 ora disponibile totale
+    out = await svc.riepilogo_dirigenza(date(2026, 10, 5), date(2026, 10, 5))  # 2026-10-05 è lunedì
+
+    assert out.num_prenotazioni_confermate == 1
+    assert float(out.totale_incassato_eur) == 30.0
+    assert out.ore_totali_disponibili == 1
+    assert out.pct_occupazione == 100.0
