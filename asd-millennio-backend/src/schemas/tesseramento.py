@@ -102,8 +102,16 @@ class TesseratoResponse(BaseModel):
     anno_sportivo: str | None
     data_scadenza: date | None
     verifica_stato: str | None
+    certificato_medico_tipo: str | None
+    certificato_medico_scadenza: date | None
     socio: SocioBreve
     tutore: SocioBreve | None
+
+
+class CertificatoMedicoResponse(BaseModel):
+    tessera_id: UUID
+    certificato_medico_tipo: str
+    certificato_medico_scadenza: date
 
 
 # ── quote (dirigenza) ─────────────────────────────────────────────────────────

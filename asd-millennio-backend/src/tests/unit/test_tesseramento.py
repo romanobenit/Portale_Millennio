@@ -1,5 +1,5 @@
 """Test onboarding self-service (Fase 2): CF, creazione profilo, conferma pagamento quota."""
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -407,6 +407,53 @@ async def test_riprendi_pagamento_409_se_gia_completato():
     assert e.value.status_code == 409
 
 
+# ── carica_certificato_medico ───────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_carica_certificato_medico_422_tipo_non_valido():
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock(); tessera.socio_id = uuid4()
+    svc = TesseramentoService(_mock_db())
+    with pytest.raises(HTTPException) as e:
+        await svc.carica_certificato_medico(
+            tessera, uuid4(), "non_valido", date(2027, 1, 1), "cert.pdf", "application/pdf", b"x"
+        )
+    assert e.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_carica_certificato_medico_aggiorna_tessera():
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock()
+    tessera.id = uuid4()
+    tessera.socio_id = uuid4()
+    tessera.numero_tessera = "VOL-2026-00001"
+    tessera.sport = "volley"
+    tessera.stato = "attiva"
+    tessera.anno_sportivo = "2026-2027"
+    tessera.data_emissione = date(2026, 9, 1)
+    tessera.data_scadenza = date(2027, 6, 30)
+    tessera.verifica_stato = "confermata"
+    tessera.pdf_url = None
+    tessera.created_at = datetime(2026, 9, 1)
+    tessera.updated_at = datetime(2026, 9, 1)
+
+    db = _mock_db()
+    svc = TesseramentoService(db)
+
+    with patch("modules.soci.tesseramento_service.storage.salva_documento", return_value=("path/al/file", 1234)):
+        out = await svc.carica_certificato_medico(
+            tessera, uuid4(), "agonistico", date(2027, 3, 1), "cert.pdf", "application/pdf", b"x"
+        )
+
+    assert tessera.certificato_medico_tipo == "agonistico"
+    assert tessera.certificato_medico_scadenza == date(2027, 3, 1)
+    assert out.certificato_medico_tipo == "agonistico"
+    db.add.assert_called_once()  # il DocumentoSocio creato
+
+
 # ── lista_tesserati: elenco completo per la dirigenza ──────────────────────────
 
 @pytest.mark.asyncio
@@ -421,6 +468,8 @@ async def test_lista_tesserati_mappa_righe_con_tutore():
     tessera.anno_sportivo = "2026-2027"
     tessera.data_scadenza = date(2027, 6, 30)
     tessera.verifica_stato = "confermata"
+    tessera.certificato_medico_tipo = "agonistico"
+    tessera.certificato_medico_scadenza = date(2027, 3, 1)
 
     minore = MagicMock()
     minore.id = uuid4()
@@ -449,6 +498,8 @@ async def test_lista_tesserati_mappa_righe_con_tutore():
     assert out[0].socio.is_minor is True
     assert out[0].tutore is not None
     assert out[0].tutore.nome == "Anna"
+    assert out[0].certificato_medico_tipo == "agonistico"
+    assert out[0].certificato_medico_scadenza == date(2027, 3, 1)
 
 
 @pytest.mark.asyncio
@@ -463,6 +514,8 @@ async def test_lista_tesserati_senza_tutore():
     tessera.anno_sportivo = "2025-2026"
     tessera.data_scadenza = date(2026, 6, 30)
     tessera.verifica_stato = "confermata"
+    tessera.certificato_medico_tipo = None
+    tessera.certificato_medico_scadenza = None
 
     socio = MagicMock()
     socio.id = uuid4()
@@ -481,6 +534,7 @@ async def test_lista_tesserati_senza_tutore():
     assert len(out) == 1
     assert out[0].stato == "scaduta"
     assert out[0].tutore is None
+    assert out[0].certificato_medico_tipo is None
 
 
 # ── verifica staff (Fase 4) ───────────────────────────────────────────────────

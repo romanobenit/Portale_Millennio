@@ -7,8 +7,9 @@ from sqlalchemy.orm import relationship
 from core.database import Base
 
 TipoDocumento = Enum(
-    "identita",  # documento d'identità del socio (o del minore)
-    "tutela",    # documento che prova la tutela del minore
+    "identita",           # documento d'identità del socio (o del minore)
+    "tutela",             # documento che prova la tutela del minore
+    "certificato_medico", # certificato di idoneità sportiva (non agonistico/agonistico)
     name="tipo_documento",
 )
 

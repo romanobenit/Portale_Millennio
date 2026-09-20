@@ -27,6 +27,8 @@ export interface Tessera {
   data_scadenza: string | null;
   anno_sportivo: string | null;
   pdf_url: string | null;
+  certificato_medico_tipo: "non_agonistico" | "agonistico" | null;
+  certificato_medico_scadenza: string | null;
 }
 
 export interface Consenso {

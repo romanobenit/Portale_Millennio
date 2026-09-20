@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchVerifiche, confermaVerifica, rifiutaVerifica, scaricaDocumento,
   fetchTesserati,
@@ -20,6 +20,22 @@ const STATO_TESSERA_LABEL: Record<string, { label: string; classes: string }> = 
   sospesa: { label: "Sospesa", classes: "bg-orange-100 text-orange-800" },
 };
 
+type StatoCertificato = "mancante" | "non_agonistico" | "agonistico" | "scaduto";
+
+function statoCertificato(t: Tesserato): StatoCertificato {
+  if (!t.certificato_medico_tipo) return "mancante";
+  const oggiISO = new Date().toISOString().slice(0, 10);
+  if (t.certificato_medico_scadenza && t.certificato_medico_scadenza < oggiISO) return "scaduto";
+  return t.certificato_medico_tipo;
+}
+
+const CERTIFICATO_BADGE: Record<StatoCertificato, { label: string; classes: string }> = {
+  mancante: { label: "Mancante", classes: "bg-gray-100 text-gray-600" },
+  non_agonistico: { label: "Non agonistico", classes: "bg-blue-100 text-blue-800" },
+  agonistico: { label: "Agonistico", classes: "bg-purple-100 text-purple-800" },
+  scaduto: { label: "Scaduto", classes: "bg-red-100 text-red-700" },
+};
+
 export default function VerificheTesseramentiPage() {
   const [items, setItems] = useState<TesseramentoDaVerificare[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +45,7 @@ export default function VerificheTesseramentiPage() {
   const [loadingTesserati, setLoadingTesserati] = useState(true);
   const [filtroStatoTessera, setFiltroStatoTessera] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
+  const [filtroCertificato, setFiltroCertificato] = useState<"" | StatoCertificato>("");
 
   const carica = async () => {
     try { setItems(await fetchVerifiche()); }
@@ -52,6 +69,13 @@ export default function VerificheTesseramentiPage() {
 
   useEffect(() => { carica(); }, []);
   useEffect(() => { caricaTesserati(); }, [filtroStatoTessera, filtroCategoria]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filtro certificato: applicato lato client (nessun endpoint dedicato — il
+  // roster non è mai abbastanza grande da giustificarlo lato server).
+  const tesseratiFiltrati = useMemo(() => {
+    if (!filtroCertificato) return tesserati;
+    return tesserati.filter((t) => statoCertificato(t) === filtroCertificato);
+  }, [tesserati, filtroCertificato]);
 
   const azione = async (id: string, tipo: "conferma" | "rifiuta") => {
     if (tipo === "rifiuta" && !confirm("Rifiutare il tesseramento? La quota diventerà erogazione liberale (non rimborsata).")) return;
@@ -158,6 +182,20 @@ export default function VerificheTesseramentiPage() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Certificato medico</label>
+              <select
+                value={filtroCertificato}
+                onChange={(e) => setFiltroCertificato(e.target.value as "" | StatoCertificato)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">Tutti</option>
+                <option value="mancante">Mancante</option>
+                <option value="non_agonistico">Non agonistico</option>
+                <option value="agonistico">Agonistico</option>
+                <option value="scaduto">Scaduto</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -177,18 +215,20 @@ export default function VerificheTesseramentiPage() {
                   <th className="px-4 py-3">Anno sportivo</th>
                   <th className="px-4 py-3">Scadenza</th>
                   <th className="px-4 py-3">Stato</th>
+                  <th className="px-4 py-3">Certificato medico</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {tesserati.length === 0 && (
+                {tesseratiFiltrati.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
                       Nessun tesserato trovato
                     </td>
                   </tr>
                 )}
-                {tesserati.map((t) => {
+                {tesseratiFiltrati.map((t) => {
                   const badge = STATO_TESSERA_LABEL[t.stato] ?? { label: t.stato, classes: "bg-gray-100 text-gray-700" };
+                  const certBadge = CERTIFICATO_BADGE[statoCertificato(t)];
                   return (
                     <tr key={t.tessera_id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono text-xs text-gray-800">{t.numero_tessera}</td>
@@ -212,6 +252,14 @@ export default function VerificheTesseramentiPage() {
                           <span className="ml-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
                             In verifica
                           </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${certBadge.classes}`}>
+                          {certBadge.label}
+                        </span>
+                        {t.certificato_medico_scadenza && (
+                          <p className="text-xs text-gray-500 mt-0.5">{t.certificato_medico_scadenza}</p>
                         )}
                       </td>
                     </tr>

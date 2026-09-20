@@ -191,6 +191,39 @@ class TesseramentoService:
         await self.db.refresh(doc)
         return DocumentoResponse.model_validate(doc)
 
+    async def carica_certificato_medico(
+        self, tessera: Tessera, caricato_da: UUID, tipo: str, scadenza: date,
+        filename: str, content_type: str, content: bytes,
+    ):
+        """
+        Certificato di idoneità sportiva (non agonistico/agonistico), self-service.
+        Informativo: non cambia lo stato della tessera, solo tracciato per la dirigenza.
+        """
+        from schemas.tessere import TesseraResponse
+
+        if tipo not in ("non_agonistico", "agonistico"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tipo certificato non valido")
+        try:
+            rel_path, size = storage.salva_documento(content, content_type)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
+        doc = DocumentoSocio(
+            socio_id=tessera.socio_id,
+            tipo="certificato_medico",
+            filename=filename[:255],
+            content_type=content_type,
+            storage_path=rel_path,
+            size_bytes=size,
+            caricato_da=caricato_da,
+        )
+        self.db.add(doc)
+        tessera.certificato_medico_tipo = tipo
+        tessera.certificato_medico_scadenza = scadenza
+        await self.db.flush()
+        await self.db.refresh(tessera)
+        return TesseraResponse.model_validate(tessera)
+
     async def _ha_documento(self, socio_id: UUID, tipo: str) -> bool:
         r = await self.db.execute(
             select(DocumentoSocio).where(
@@ -548,6 +581,8 @@ class TesseramentoService:
                 anno_sportivo=t.anno_sportivo,
                 data_scadenza=t.data_scadenza,
                 verifica_stato=t.verifica_stato,
+                certificato_medico_tipo=t.certificato_medico_tipo,
+                certificato_medico_scadenza=t.certificato_medico_scadenza,
                 socio=SocioBreve(
                     id=socio.id, nome=socio.nome, cognome=socio.cognome,
                     codice_fiscale=socio.codice_fiscale, is_minor=socio.is_minor,
