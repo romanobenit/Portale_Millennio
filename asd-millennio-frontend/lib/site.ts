@@ -53,7 +53,10 @@ export const portalLinks = {
   areaSoci: "/dashboard",
   tesseramento: "/dashboard",
   prenotaCampo: "/dashboard/prenotazioni",
-  raccoltaFondi: "/dashboard/nft",
+  // Temporaneamente puntato alla pagina "in costruzione": la raccolta fondi
+  // (/dashboard/nft) non è ancora annunciata pubblicamente. Ripristinare a
+  // "/dashboard/nft" quando la raccolta fondi viene lanciata.
+  raccoltaFondi: "/raccolta-fondi",
 } as const;
 
 /**
