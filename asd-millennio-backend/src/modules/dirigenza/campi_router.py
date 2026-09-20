@@ -8,13 +8,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import RequireDirigenza
 from models.slot_template_campo import SlotTemplateCampo
+from modules.campi.service import CampiService
 from schemas.campi import (
+    CampiConfigResponse,
+    CampiConfigUpdate,
     SlotTemplateCampoCreate,
     SlotTemplateCampoResponse,
     SlotTemplateCampoUpdate,
 )
 
 router = APIRouter(prefix="/dirigenza/campi", tags=["Dirigenza — Campi"])
+
+
+@router.get("/config", response_model=CampiConfigResponse)
+async def leggi_config(
+    db: AsyncSession = Depends(get_db),
+    _=RequireDirigenza,
+):
+    return await CampiService(db).get_config()
+
+
+@router.put("/config", response_model=CampiConfigResponse)
+async def aggiorna_config(
+    body: CampiConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=RequireDirigenza,
+):
+    return await CampiService(db).aggiorna_config(body.orizzonte_giorni)
 
 
 @router.get("/templates", response_model=List[SlotTemplateCampoResponse])

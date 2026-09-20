@@ -1,4 +1,5 @@
 from models.acquisto_nft import AccessoLog, AcquistoNFT, AcquistoNFTSlot
+from models.campi_config import CampiConfig
 from models.consenso import Consenso
 from models.documento_socio import DocumentoSocio
 from models.pagamento_tessera import PagamentoTessera
@@ -28,4 +29,5 @@ __all__ = [
     "DocumentoSocio",
     "QuotaTessera",
     "PagamentoTessera",
+    "CampiConfig",
 ]

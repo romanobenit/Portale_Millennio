@@ -115,3 +115,13 @@ class CheckoutCarrelloResponse(BaseModel):
 class CancellazioneCampoResponse(BaseModel):
     prenotazione_id: UUID
     messaggio: str
+
+
+class CampiConfigResponse(BaseModel):
+    orizzonte_giorni: int
+
+    model_config = {"from_attributes": True}
+
+
+class CampiConfigUpdate(BaseModel):
+    orizzonte_giorni: int = Field(ge=1, le=365)
