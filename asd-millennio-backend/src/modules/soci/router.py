@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -211,6 +211,30 @@ async def riprendi_pagamento_tessera(
     if not me:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Profilo non trovato")
     return await TesseramentoService(db).riprendi_pagamento(tessera_id, me.id)
+
+
+@router.post("/me/tessere/{tessera_id}/certificato-medico", response_model=TesseraResponse)
+async def carica_certificato_medico(
+    tessera_id: UUID,
+    tipo: str = Query(..., pattern="^(non_agonistico|agonistico)$"),
+    scadenza: date = Query(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Carica il certificato di idoneità sportiva per una propria tessera (o di un
+    proprio minore). Informativo: non cambia lo stato della tessera.
+    """
+    tessera = (await db.execute(select(Tessera).where(Tessera.id == tessera_id))).scalar_one_or_none()
+    if not tessera:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tessera non trovata")
+    me, _target = await _socio_target(user, db, tessera.socio_id)
+    content = await file.read(storage.MAX_DOC_BYTES + 1)
+    return await TesseramentoService(db).carica_certificato_medico(
+        tessera, me.id, tipo, scadenza,
+        file.filename or "certificato", file.content_type or "application/octet-stream", content,
+    )
 
 
 # ─── Minori (gestiti dal tutore) ───────────────────────────────────────────────

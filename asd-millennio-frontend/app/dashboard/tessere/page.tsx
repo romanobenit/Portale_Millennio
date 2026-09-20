@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getKeycloak } from "@/lib/auth/keycloak";
 import { fetchMe, fetchTessereSocio, Tessera } from "@/lib/api/soci";
-import { riprendiPagamentoTessera } from "@/lib/api/tesseramento";
+import { riprendiPagamentoTessera, caricaCertificatoMedico } from "@/lib/api/tesseramento";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
@@ -92,7 +92,13 @@ export default function TesserePage() {
       ) : (
         <div className="space-y-4">
           {tessere.map((t) => (
-            <TesseraCard key={t.id} tessera={t} />
+            <TesseraCard
+              key={t.id}
+              tessera={t}
+              onCertificatoAggiornato={(aggiornata) =>
+                setTessere((prev) => prev.map((p) => (p.id === aggiornata.id ? aggiornata : p)))
+              }
+            />
           ))}
         </div>
       )}
@@ -100,9 +106,44 @@ export default function TesserePage() {
   );
 }
 
-function TesseraCard({ tessera }: { tessera: Tessera }) {
+function TesseraCard({
+  tessera,
+  onCertificatoAggiornato,
+}: {
+  tessera: Tessera;
+  onCertificatoAggiornato: (t: Tessera) => void;
+}) {
   const badge = STATO_BADGE[tessera.stato] ?? { label: tessera.stato, classes: "bg-gray-100 text-gray-700" };
   const [completando, setCompletando] = useState(false);
+
+  const [mostraCertForm, setMostraCertForm] = useState(false);
+  const [tipoCert, setTipoCert] = useState<"non_agonistico" | "agonistico">("non_agonistico");
+  const [scadenzaCert, setScadenzaCert] = useState("");
+  const [fileCert, setFileCert] = useState<File | null>(null);
+  const [caricandoCert, setCaricandoCert] = useState(false);
+
+  const oggiISO = new Date().toISOString().slice(0, 10);
+  const certScaduto = !!tessera.certificato_medico_scadenza && tessera.certificato_medico_scadenza < oggiISO;
+
+  const salvaCertificato = async () => {
+    if (!fileCert || !scadenzaCert) {
+      toast.error("Seleziona un file e la data di scadenza.");
+      return;
+    }
+    setCaricandoCert(true);
+    try {
+      const aggiornata = await caricaCertificatoMedico(tessera.id, tipoCert, scadenzaCert, fileCert);
+      toast.success("Certificato medico caricato.");
+      onCertificatoAggiornato(aggiornata);
+      setMostraCertForm(false);
+      setFileCert(null);
+      setScadenzaCert("");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore nel caricamento del certificato");
+    } finally {
+      setCaricandoCert(false);
+    }
+  };
 
   const completaPagamento = async () => {
     setCompletando(true);
@@ -188,6 +229,59 @@ function TesseraCard({ tessera }: { tessera: Tessera }) {
               {tessera.data_scadenza}
             </span>
           </>
+        )}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-xs text-gray-600">
+            Certificato medico:{" "}
+            {tessera.certificato_medico_tipo ? (
+              <span className={clsx("font-medium", certScaduto ? "text-red-600" : "text-gray-800")}>
+                {tessera.certificato_medico_tipo === "agonistico" ? "Agonistico" : "Non agonistico"}
+                {" — "}{certScaduto ? "scaduto il" : "scade il"} {tessera.certificato_medico_scadenza}
+              </span>
+            ) : (
+              <span className="text-gray-400">nessuno caricato</span>
+            )}
+          </p>
+          <button onClick={() => setMostraCertForm((s) => !s)} className="text-xs text-blue-700 hover:underline">
+            {tessera.certificato_medico_tipo ? "Aggiorna certificato" : "Carica certificato"}
+          </button>
+        </div>
+
+        {mostraCertForm && (
+          <div className="mt-3 space-y-2 rounded-lg bg-gray-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={tipoCert}
+                onChange={(e) => setTipoCert(e.target.value as "non_agonistico" | "agonistico")}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+              >
+                <option value="non_agonistico">Non agonistico</option>
+                <option value="agonistico">Agonistico</option>
+              </select>
+              <input
+                type="date"
+                value={scadenzaCert}
+                onChange={(e) => setScadenzaCert(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+              />
+              <input
+                type="file"
+                accept=".pdf,image/*"
+                onChange={(e) => setFileCert(e.target.files?.[0] ?? null)}
+                className="text-xs"
+              />
+            </div>
+            <button
+              onClick={salvaCertificato}
+              disabled={caricandoCert}
+              className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
+            >
+              {caricandoCert ? "Caricamento…" : "Salva certificato"}
+            </button>
+          </div>
         )}
       </div>
     </div>

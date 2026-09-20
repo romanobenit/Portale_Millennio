@@ -9,7 +9,7 @@ celery_app = Celery(
     "millennio",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["tasks.mint", "tasks.tesseramento"],
+    include=["tasks.mint", "tasks.tesseramento", "tasks.certificato_medico"],
 )
 
 celery_app.conf.update(
@@ -35,6 +35,11 @@ celery_app.conf.update(
         "auto-conferma-tesseramenti": {
             "task": "tasks.tesseramento.auto_conferma_tesseramenti",
             "schedule": crontab(hour=3, minute=0),
+        },
+        # Alert scadenza certificato medico (30/15/7 giorni prima).
+        "alert-scadenza-certificato-medico": {
+            "task": "tasks.certificato_medico.alert_scadenza_certificato",
+            "schedule": crontab(hour=7, minute=0),
         },
     },
 )

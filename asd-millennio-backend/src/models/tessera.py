@@ -20,6 +20,13 @@ VerificaTessera = Enum(
     name="verifica_tessera"
 )
 
+# NULL = nessun certificato caricato. Non blocca l'attivazione della tessera
+# (tracciamento informativo per la dirigenza, non un requisito del flusso).
+TipoCertificatoMedico = Enum(
+    "non_agonistico", "agonistico",
+    name="tipo_certificato_medico"
+)
+
 
 class Tessera(Base):
     __tablename__ = "tessere"
@@ -38,6 +45,9 @@ class Tessera(Base):
     verifica_scadenza = Column(DateTime(timezone=True), nullable=True)  # +N giorni: auto-conferma
     verificata_da = Column(UUID(as_uuid=True), ForeignKey("soci.id"), nullable=True)
     verificata_at = Column(DateTime(timezone=True), nullable=True)
+    # Certificato medico (self-service, informativo — vedi TipoCertificatoMedico)
+    certificato_medico_tipo = Column(TipoCertificatoMedico, nullable=True)
+    certificato_medico_scadenza = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

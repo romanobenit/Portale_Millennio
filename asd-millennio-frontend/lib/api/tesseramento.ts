@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { Socio } from "./soci";
+import type { Socio, Tessera } from "./soci";
 
 export interface OnboardingData {
   nome: string;
@@ -64,6 +64,8 @@ export interface Tesserato {
   anno_sportivo: string | null;
   data_scadenza: string | null;
   verifica_stato: string | null;
+  certificato_medico_tipo: "non_agonistico" | "agonistico" | null;
+  certificato_medico_scadenza: string | null;
   socio: { id: string; nome: string; cognome: string; codice_fiscale: string; is_minor: boolean };
   tutore: { id: string; nome: string; cognome: string } | null;
 }
@@ -86,6 +88,22 @@ export async function caricaDocumento(
     params: { tipo, socio_id: socioId },
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return data;
+}
+
+export async function caricaCertificatoMedico(
+  tesseraId: string,
+  tipo: "non_agonistico" | "agonistico",
+  scadenza: string,
+  file: File,
+): Promise<Tessera> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.post<Tessera>(
+    `/soci/me/tessere/${tesseraId}/certificato-medico`,
+    form,
+    { params: { tipo, scadenza }, headers: { "Content-Type": "multipart/form-data" } },
+  );
   return data;
 }
 

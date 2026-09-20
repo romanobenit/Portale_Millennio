@@ -28,6 +28,8 @@ class TesseraResponse(BaseModel):
     data_scadenza: date | None
     anno_sportivo: str | None
     pdf_url: str | None
+    certificato_medico_tipo: str | None = None
+    certificato_medico_scadenza: date | None = None
     created_at: datetime
     updated_at: datetime
 
