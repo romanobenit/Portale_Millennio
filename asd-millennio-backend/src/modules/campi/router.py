@@ -11,6 +11,7 @@ from core.security import get_current_user
 from models.socio import Socio
 from modules.campi.service import CampiService
 from schemas.campi import (
+    CampiConfigResponse,
     CancellazioneCampoResponse,
     CheckoutCarrelloResponse,
     GiornoDisponibileResponse,
@@ -19,6 +20,12 @@ from schemas.campi import (
 )
 
 router = APIRouter(prefix="/campi", tags=["M02 — Campi"])
+
+
+@router.get("/config", response_model=CampiConfigResponse)
+async def config_campi(db: AsyncSession = Depends(get_db)):
+    """Configurazione pubblica (orizzonte_giorni) usata dalla pagina prenotazioni."""
+    return await CampiService(db).get_config()
 
 
 async def _get_socio_id(user: dict, db: AsyncSession) -> UUID:

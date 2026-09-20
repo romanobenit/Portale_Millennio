@@ -57,6 +57,10 @@ export default function GestioneCampiPage() {
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
+  const [orizzonteGiorni, setOrizzonteGiorni] = useState<number | null>(null);
+  const [orizzonteInput, setOrizzonteInput] = useState("");
+  const [savingOrizzonte, setSavingOrizzonte] = useState(false);
+
   // Rinfresca il token prima di ogni chiamata (l'access token dura ~5 min → evita 401)
   const authHeader = async () => {
     try {
@@ -83,8 +87,50 @@ export default function GestioneCampiPage() {
     }
   };
 
+  const caricaOrizzonte = async () => {
+    try {
+      const res = await fetch(`${API}/dirigenza/campi/config`, {
+        headers: { Authorization: await authHeader() },
+      });
+      if (!res.ok) throw new Error("Errore nel caricamento");
+      const config = await res.json();
+      setOrizzonteGiorni(config.orizzonte_giorni);
+      setOrizzonteInput(String(config.orizzonte_giorni));
+    } catch {
+      /* non bloccante: la tabella dei template resta comunque usabile */
+    }
+  };
+
+  const salvaOrizzonte = async () => {
+    const valore = Number(orizzonteInput);
+    if (!Number.isInteger(valore) || valore < 1 || valore > 365) {
+      alert("Inserisci un numero di giorni tra 1 e 365.");
+      return;
+    }
+    setSavingOrizzonte(true);
+    try {
+      const res = await fetch(`${API}/dirigenza/campi/config`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: await authHeader(),
+        },
+        body: JSON.stringify({ orizzonte_giorni: valore }),
+      });
+      if (!res.ok) throw new Error("Errore nel salvataggio");
+      const config = await res.json();
+      setOrizzonteGiorni(config.orizzonte_giorni);
+      setOrizzonteInput(String(config.orizzonte_giorni));
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Errore nel salvataggio");
+    } finally {
+      setSavingOrizzonte(false);
+    }
+  };
+
   useEffect(() => {
     carica();
+    caricaOrizzonte();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apriNuovo = () => {
@@ -187,6 +233,34 @@ export default function GestioneCampiPage() {
         >
           + Nuovo slot
         </button>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+        <h2 className="text-sm font-semibold text-gray-900">Orizzonte di disponibilità</h2>
+        <p className="text-xs text-gray-500 mt-1 mb-3">
+          Per quanti giorni da oggi i soci possono vedere e prenotare i campi. Vale per tutte le fasce.
+        </p>
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            min={1}
+            max={365}
+            value={orizzonteInput}
+            onChange={(e) => setOrizzonteInput(e.target.value)}
+            className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <span className="text-sm text-gray-600">giorni</span>
+          <button
+            onClick={salvaOrizzonte}
+            disabled={savingOrizzonte || orizzonteInput === String(orizzonteGiorni ?? "")}
+            className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
+          >
+            {savingOrizzonte ? "Salvataggio…" : "Salva"}
+          </button>
+          {orizzonteGiorni !== null && (
+            <span className="text-xs text-gray-400">Attuale: {orizzonteGiorni} giorni</span>
+          )}
+        </div>
       </div>
 
       {error && (

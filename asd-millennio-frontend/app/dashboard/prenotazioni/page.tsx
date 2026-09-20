@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   fetchDisponibilita,
+  fetchCampiConfig,
   fetchCarrello,
   aggiungiAlCarrello,
   checkoutCarrello,
@@ -26,16 +27,23 @@ export default function PrenotazioniPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pagamento, setPagamento] = useState(false);
+  // Fallback finché non arriva la configurazione dal backend (dirigenza →
+  // Gestione Campi): preserva il comportamento storico di 60 giorni.
+  const [orizzonteGiorni, setOrizzonteGiorni] = useState(60);
 
   const oggi = format(new Date(), "yyyy-MM-dd");
-  const fra60 = format(addDays(new Date(), 60), "yyyy-MM-dd");
+  const dataFine = format(addDays(new Date(), orizzonteGiorni), "yyyy-MM-dd");
 
   // Caricamento completo (mount + ritorno dal pagamento): è la fonte autorevole
-  // iniziale del carrello.
+  // iniziale del carrello. La config va letta per prima: fissa l'orizzonte
+  // usato dalla chiamata disponibilità che segue nello stesso giro.
   const caricaDati = async () => {
     try {
+      const config = await fetchCampiConfig().catch(() => ({ orizzonte_giorni: orizzonteGiorni }));
+      setOrizzonteGiorni(config.orizzonte_giorni);
+      const dataFineAggiornata = format(addDays(new Date(), config.orizzonte_giorni), "yyyy-MM-dd");
       const [disp, cart, mie] = await Promise.all([
-        fetchDisponibilita(oggi, fra60),
+        fetchDisponibilita(oggi, dataFineAggiornata),
         fetchCarrello().catch(() => [] as PrenotazioneCampo[]),
         fetchMiePrenotazioni().catch(() => [] as PrenotazioneCampo[]),
       ]);
@@ -58,7 +66,7 @@ export default function PrenotazioniPage() {
   const ricaricaDisponibilita = async () => {
     try {
       const [disp, mie] = await Promise.all([
-        fetchDisponibilita(oggi, fra60),
+        fetchDisponibilita(oggi, dataFine),
         fetchMiePrenotazioni().catch(() => [] as PrenotazioneCampo[]),
       ]);
       setDisponibilita(disp);
@@ -261,7 +269,7 @@ export default function PrenotazioniPage() {
       {/* ── Disponibilità per ora ────────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-800">Disponibilità prossimi 60 giorni</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Disponibilità prossimi {orizzonteGiorni} giorni</h2>
           <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-blue-100 border border-blue-300" /> libero
@@ -287,7 +295,7 @@ export default function PrenotazioniPage() {
         )}
 
         {!loading && !error && giorni.length === 0 && (
-          <p className="text-gray-500 text-sm">Nessuna fascia prenotabile nei prossimi 60 giorni.</p>
+          <p className="text-gray-500 text-sm">Nessuna fascia prenotabile nei prossimi {orizzonteGiorni} giorni.</p>
         )}
 
         {!loading && !error && giorni.length > 0 && (

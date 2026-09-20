@@ -54,3 +54,58 @@ async def test_verifica_tessera_senza_tessere_attive_403():
         await CampiService(db)._verifica_tessera(socio_id)
 
     assert exc_info.value.status_code == 403
+
+
+# ── configurazione orizzonte_giorni (dirigenza) ────────────────────────────
+
+def _db_config(config) -> AsyncMock:
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = config
+    db.execute = AsyncMock(return_value=result)
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_get_config_default_se_db_vuoto():
+    """Nessuna riga seedata (DB non ancora migrato) → default 60, non un crash."""
+    from modules.campi.service import CampiService
+
+    db = _db_config(None)
+    config = await CampiService(db).get_config()
+    assert config.orizzonte_giorni == 60
+
+
+@pytest.mark.asyncio
+async def test_get_config_legge_riga_esistente():
+    from modules.campi.service import CampiService
+
+    esistente = MagicMock()
+    esistente.orizzonte_giorni = 45
+    db = _db_config(esistente)
+    config = await CampiService(db).get_config()
+    assert config.orizzonte_giorni == 45
+
+
+@pytest.mark.asyncio
+async def test_aggiorna_config_modifica_riga_esistente():
+    from modules.campi.service import CampiService
+
+    esistente = MagicMock()
+    esistente.orizzonte_giorni = 60
+    db = _db_config(esistente)
+    await CampiService(db).aggiorna_config(90)
+    assert esistente.orizzonte_giorni == 90
+    db.add.assert_not_called()  # riga già esistente: solo update, nessun insert
+
+
+@pytest.mark.asyncio
+async def test_aggiorna_config_crea_riga_se_assente():
+    from modules.campi.service import CampiService
+
+    db = _db_config(None)
+    await CampiService(db).aggiorna_config(30)
+    db.add.assert_called_once()

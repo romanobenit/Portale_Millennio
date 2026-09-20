@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.logger import logger
+from models.campi_config import CampiConfig
 from models.prenotazione_campo import PrenotazioneCampo
 from models.slot_template_campo import SlotTemplateCampo
 from models.tessera import Tessera
 from schemas.campi import (
+    CampiConfigResponse,
     CheckoutCarrelloResponse,
     GiornoDisponibileResponse,
     PrenotazioneCampoResponse,
@@ -106,6 +108,28 @@ class CampiService:
             p.stato = "scaduta"
         if scadute:
             await self.db.flush()
+
+    # ─── configurazione (dirigenza) ─────────────────────────────────────────
+
+    async def get_config(self) -> CampiConfigResponse:
+        """Riga singleton: se manca (DB non ancora seedato) restituisce il default 60."""
+        r = await self.db.execute(select(CampiConfig).limit(1))
+        config = r.scalars().first()
+        if not config:
+            return CampiConfigResponse(orizzonte_giorni=60)
+        return CampiConfigResponse.model_validate(config)
+
+    async def aggiorna_config(self, orizzonte_giorni: int) -> CampiConfigResponse:
+        r = await self.db.execute(select(CampiConfig).limit(1))
+        config = r.scalars().first()
+        if not config:
+            config = CampiConfig(orizzonte_giorni=orizzonte_giorni)
+            self.db.add(config)
+        else:
+            config.orizzonte_giorni = orizzonte_giorni
+        await self.db.flush()
+        await self.db.refresh(config)
+        return CampiConfigResponse.model_validate(config)
 
     # ─── disponibilità (per singola ora) ────────────────────────────────────
 

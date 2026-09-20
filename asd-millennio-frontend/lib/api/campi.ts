@@ -53,6 +53,17 @@ export async function fetchDisponibilita(
   return res.json();
 }
 
+export interface CampiConfig {
+  orizzonte_giorni: number;
+}
+
+// Configurazione (orizzonte_giorni): endpoint pubblico, nessun token.
+export async function fetchCampiConfig(): Promise<CampiConfig> {
+  const res = await fetch(`${API}/campi/config`);
+  if (!res.ok) throw new Error("Impossibile caricare la configurazione campi");
+  return res.json();
+}
+
 // ─── Carrello (chiamate autenticate via apiClient, con auto-refresh token) ───
 
 export async function aggiungiAlCarrello(
