@@ -82,6 +82,11 @@ export async function avviaTesseramento(categoria: string): Promise<CheckoutResp
   return data;
 }
 
+export async function riprendiPagamentoTessera(tesseraId: string): Promise<CheckoutResponse> {
+  const { data } = await apiClient.post<CheckoutResponse>(`/soci/me/tessere/${tesseraId}/riprendi-pagamento`);
+  return data;
+}
+
 // ── minori ──────────────────────────────────────────────────────────────────
 
 export async function aggiungiMinore(data: MinoreData): Promise<Socio> {

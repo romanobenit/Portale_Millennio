@@ -313,8 +313,21 @@ class TesseramentoService:
         self.db.add(pagamento)
         await self.db.flush()
 
-        unit_amount = int(round(float(quota.importo_eur) * 100))
-        stripe_session = await asyncio.to_thread(
+        stripe_session = await self._crea_sessione_stripe_quota(pagamento, categoria)
+        pagamento.stripe_session_id = stripe_session.id
+        await self.db.flush()
+
+        return TesseramentoCheckoutResponse(
+            tessera_id=tessera.id,
+            pagamento_id=pagamento.id,
+            stripe_checkout_url=stripe_session.url,
+            importo_eur=float(quota.importo_eur),
+        )
+
+    async def _crea_sessione_stripe_quota(self, pagamento: PagamentoTessera, categoria: str):
+        """Crea una sessione Stripe Checkout per il pagamento (nuovo o da riprendere) della quota."""
+        unit_amount = int(round(float(pagamento.importo_eur) * 100))
+        return await asyncio.to_thread(
             stripe.checkout.Session.create,
             payment_method_types=["card"],
             line_items=[{
@@ -332,14 +345,60 @@ class TesseramentoService:
             metadata={"tipo": "tessera", "pagamento_tessera_id": str(pagamento.id)},
             payment_intent_data={"metadata": {"pagamento_tessera_id": str(pagamento.id)}},
         )
-        pagamento.stripe_session_id = stripe_session.id
-        await self.db.flush()
+
+    async def riprendi_pagamento(self, tessera_id: UUID, socio_id: UUID) -> TesseramentoCheckoutResponse:
+        """
+        Recupera (o ricrea se scaduta) la sessione Stripe di una tessera già in
+        attesa di pagamento — per completare un tesseramento avviato in
+        precedenza e mai portato a termine. Riusa la sessione esistente se
+        ancora aperta, invece di generarne una nuova ad ogni click.
+        """
+        tessera = (await self.db.execute(
+            select(Tessera).where(Tessera.id == tessera_id, Tessera.socio_id == socio_id)
+        )).scalar_one_or_none()
+        if not tessera or tessera.stato != "in_attesa_pagamento":
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail="Nessun pagamento in sospeso per questa tessera.",
+            )
+
+        pagamento = (await self.db.execute(
+            select(PagamentoTessera).where(
+                PagamentoTessera.tessera_id == tessera.id,
+                PagamentoTessera.stato == "in_attesa_pagamento",
+            )
+        )).scalars().first()
+        if not pagamento:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail="Nessun pagamento in sospeso per questa tessera.",
+            )
+
+        session = None
+        if pagamento.stripe_session_id:
+            try:
+                session = await asyncio.to_thread(
+                    stripe.checkout.Session.retrieve, pagamento.stripe_session_id
+                )
+            except stripe.error.InvalidRequestError:
+                session = None  # sessione non più trovabile su Stripe: ne creiamo una nuova
+
+        if session and session.status == "complete":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Il pagamento risulta già completato: aggiorna la pagina tra qualche secondo.",
+            )
+
+        if not session or session.status != "open":
+            session = await self._crea_sessione_stripe_quota(pagamento, tessera.sport)
+            pagamento.stripe_session_id = session.id
+            await self.db.flush()
 
         return TesseramentoCheckoutResponse(
             tessera_id=tessera.id,
             pagamento_id=pagamento.id,
-            stripe_checkout_url=stripe_session.url,
-            importo_eur=float(quota.importo_eur),
+            stripe_checkout_url=session.url,
+            importo_eur=float(pagamento.importo_eur),
         )
 
     async def conferma_pagamento_tessera(self, stripe_session_id: str) -> None:
