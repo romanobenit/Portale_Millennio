@@ -91,6 +91,13 @@ export async function caricaDocumento(
   return data;
 }
 
+export async function fetchMieiDocumenti(socioId?: string): Promise<DocumentoResponse[]> {
+  const { data } = await apiClient.get<DocumentoResponse[]>("/soci/me/documenti", {
+    params: socioId ? { socio_id: socioId } : undefined,
+  });
+  return data;
+}
+
 export async function caricaCertificatoMedico(
   tesseraId: string,
   tipo: "non_agonistico" | "agonistico",
