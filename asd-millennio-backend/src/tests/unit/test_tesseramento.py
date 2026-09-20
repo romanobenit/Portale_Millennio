@@ -313,6 +313,100 @@ async def test_conferma_pagamento_attiva_provvisoria():
     assert tessera.verifica_scadenza is not None
 
 
+# ── riprendi_pagamento: completare un tesseramento avviato in precedenza ──────
+
+@pytest.mark.asyncio
+async def test_riprendi_pagamento_404_se_non_in_attesa():
+    from modules.soci.tesseramento_service import TesseramentoService
+    tessera = MagicMock(); tessera.stato = "attiva"
+    db = _mock_db()
+    r = MagicMock(); r.scalar_one_or_none.return_value = tessera
+    db.execute = AsyncMock(return_value=r)
+    with pytest.raises(HTTPException) as e:
+        await TesseramentoService(db).riprendi_pagamento(uuid4(), uuid4())
+    assert e.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_riprendi_pagamento_riusa_sessione_aperta():
+    """Se la sessione Stripe esistente è ancora 'open', va riusata senza crearne una nuova."""
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock(); tessera.id = uuid4(); tessera.stato = "in_attesa_pagamento"; tessera.sport = "volley"
+    pagamento = MagicMock()
+    pagamento.id = uuid4()
+    pagamento.stripe_session_id = "cs_test_esistente"
+    pagamento.importo_eur = 50
+    pagamento.stato = "in_attesa_pagamento"
+
+    db = _mock_db()
+    r1 = MagicMock(); r1.scalar_one_or_none.return_value = tessera
+    r2 = MagicMock(); r2.scalars.return_value.first.return_value = pagamento
+    db.execute = AsyncMock(side_effect=[r1, r2])
+
+    sessione_aperta = MagicMock(); sessione_aperta.status = "open"; sessione_aperta.url = "https://checkout.stripe.com/vecchia"
+
+    with patch("modules.soci.tesseramento_service.asyncio.to_thread",
+               new_callable=AsyncMock, return_value=sessione_aperta):
+        res = await TesseramentoService(db).riprendi_pagamento(tessera.id, uuid4())
+
+    assert res.stripe_checkout_url == "https://checkout.stripe.com/vecchia"
+    assert pagamento.stripe_session_id == "cs_test_esistente"  # non sovrascritta: sessione riusata
+
+
+@pytest.mark.asyncio
+async def test_riprendi_pagamento_ricrea_sessione_scaduta():
+    """Se la sessione Stripe esistente è scaduta, ne va creata una nuova per lo stesso pagamento."""
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock(); tessera.id = uuid4(); tessera.stato = "in_attesa_pagamento"; tessera.sport = "volley"
+    pagamento = MagicMock()
+    pagamento.id = uuid4()
+    pagamento.stripe_session_id = "cs_test_scaduta"
+    pagamento.importo_eur = 50
+    pagamento.stato = "in_attesa_pagamento"
+
+    db = _mock_db()
+    r1 = MagicMock(); r1.scalar_one_or_none.return_value = tessera
+    r2 = MagicMock(); r2.scalars.return_value.first.return_value = pagamento
+    db.execute = AsyncMock(side_effect=[r1, r2])
+
+    sessione_scaduta = MagicMock(); sessione_scaduta.status = "expired"
+    sessione_nuova = MagicMock(); sessione_nuova.id = "cs_test_nuova"; sessione_nuova.url = "https://checkout.stripe.com/nuova"
+
+    with patch("modules.soci.tesseramento_service.asyncio.to_thread",
+               new_callable=AsyncMock, side_effect=[sessione_scaduta, sessione_nuova]):
+        res = await TesseramentoService(db).riprendi_pagamento(tessera.id, uuid4())
+
+    assert res.stripe_checkout_url == "https://checkout.stripe.com/nuova"
+    assert pagamento.stripe_session_id == "cs_test_nuova"
+
+
+@pytest.mark.asyncio
+async def test_riprendi_pagamento_409_se_gia_completato():
+    """Se la sessione risulta 'complete' (webhook in ritardo), non va creata una seconda sessione."""
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock(); tessera.id = uuid4(); tessera.stato = "in_attesa_pagamento"; tessera.sport = "volley"
+    pagamento = MagicMock()
+    pagamento.stripe_session_id = "cs_test_completata"
+    pagamento.importo_eur = 50
+    pagamento.stato = "in_attesa_pagamento"
+
+    db = _mock_db()
+    r1 = MagicMock(); r1.scalar_one_or_none.return_value = tessera
+    r2 = MagicMock(); r2.scalars.return_value.first.return_value = pagamento
+    db.execute = AsyncMock(side_effect=[r1, r2])
+
+    sessione_completata = MagicMock(); sessione_completata.status = "complete"
+
+    with patch("modules.soci.tesseramento_service.asyncio.to_thread",
+               new_callable=AsyncMock, return_value=sessione_completata):
+        with pytest.raises(HTTPException) as e:
+            await TesseramentoService(db).riprendi_pagamento(tessera.id, uuid4())
+    assert e.value.status_code == 409
+
+
 # ── verifica staff (Fase 4) ───────────────────────────────────────────────────
 
 def _res_one(obj):

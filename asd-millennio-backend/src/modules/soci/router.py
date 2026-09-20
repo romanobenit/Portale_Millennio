@@ -199,6 +199,19 @@ async def avvia_tesseramento_self(
     return await TesseramentoService(db).avvia_tesseramento(me, data.categoria, is_minore=False)
 
 
+@router.post("/me/tessere/{tessera_id}/riprendi-pagamento", response_model=TesseramentoCheckoutResponse)
+async def riprendi_pagamento_tessera(
+    tessera_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recupera/ricrea il checkout Stripe di una propria tessera in attesa di pagamento."""
+    me = await SociRepository(db).get_by_keycloak_id(user["sub"])
+    if not me:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Profilo non trovato")
+    return await TesseramentoService(db).riprendi_pagamento(tessera_id, me.id)
+
+
 # ─── Minori (gestiti dal tutore) ───────────────────────────────────────────────
 
 @router.post("/me/minori", response_model=SocioResponse, status_code=201)

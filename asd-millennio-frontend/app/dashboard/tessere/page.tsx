@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getKeycloak } from "@/lib/auth/keycloak";
 import { fetchMe, fetchTessereSocio, Tessera } from "@/lib/api/soci";
+import { riprendiPagamentoTessera } from "@/lib/api/tesseramento";
+import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
 const SPORT_LABEL: Record<string, string> = {
@@ -98,6 +100,18 @@ export default function TesserePage() {
 
 function TesseraCard({ tessera }: { tessera: Tessera }) {
   const badge = STATO_BADGE[tessera.stato] ?? { label: tessera.stato, classes: "bg-gray-100 text-gray-700" };
+  const [completando, setCompletando] = useState(false);
+
+  const completaPagamento = async () => {
+    setCompletando(true);
+    try {
+      const res = await riprendiPagamentoTessera(tessera.id);
+      window.location.href = res.stripe_checkout_url;
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore nel recupero del pagamento");
+      setCompletando(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
@@ -110,6 +124,15 @@ function TesseraCard({ tessera }: { tessera: Tessera }) {
             <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", badge.classes)}>
               {badge.label}
             </span>
+            {tessera.stato === "in_attesa_pagamento" && (
+              <button
+                onClick={completaPagamento}
+                disabled={completando}
+                className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {completando ? "Attendi…" : "Completa il pagamento"}
+              </button>
+            )}
             {tessera.verifica_stato === "in_verifica" && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                 In verifica
