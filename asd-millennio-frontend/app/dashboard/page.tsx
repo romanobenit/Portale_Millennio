@@ -1,20 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchMe, type Socio } from "@/lib/api/soci";
+import { fetchMe, fetchTessereSocio, type Socio, type Tessera } from "@/lib/api/soci";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ConsensiSection } from "@/components/soci/ConsensiSection";
 
+const SPORT_LABEL: Record<string, string> = {
+  volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball",
+  sostenitore: "Socio Sostenitore",
+};
+
+// Variante Badge + etichetta per stato tessera, coerenti con "Le mie tessere".
+const STATO_TESSERA: Record<string, { label: string; variant: "green" | "orange" | "gray" | "red" }> = {
+  attiva: { label: "Attiva", variant: "green" },
+  in_attesa_pagamento: { label: "In attesa pagamento", variant: "orange" },
+  bozza: { label: "Bozza", variant: "gray" },
+  scaduta: { label: "Scaduta", variant: "red" },
+  sospesa: { label: "Sospesa", variant: "orange" },
+};
+
 export default function ProfiloPage() {
   const [socio, setSocio] = useState<Socio | null>(null);
+  const [tessere, setTessere] = useState<Tessera[]>([]);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
   useEffect(() => {
     // Il layout ha già autenticato — fetchMe usa il token nell'apiClient
     fetchMe()
-      .then(setSocio)
+      .then(async (s) => {
+        setSocio(s);
+        try {
+          setTessere(await fetchTessereSocio(s.id));
+        } catch {
+          // Non bloccante: il profilo resta visibile anche se le tessere non si caricano.
+        }
+      })
       .catch((e: Error) => setErrore(e.message || "Errore di rete. Ricarica la pagina."))
       .finally(() => setLoading(false));
   }, []);
@@ -22,10 +44,6 @@ export default function ProfiloPage() {
   if (loading) return <p className="text-gray-500">Caricamento profilo…</p>;
   if (errore) return <p className="text-red-600">{errore}</p>;
   if (!socio) return null;
-
-  const SPORT_LABEL: Record<string, string> = {
-    volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball",
-  };
 
   return (
     <div className="space-y-6">
@@ -43,11 +61,16 @@ export default function ProfiloPage() {
 
       <Card title="Sport">
         <div className="flex flex-wrap gap-2">
-          {socio.sport.length === 0
+          {tessere.length === 0
             ? <p className="text-gray-500 text-sm">Nessuno sport associato</p>
-            : socio.sport.map((s) => (
-                <Badge key={s} variant="blue">{SPORT_LABEL[s] ?? s}</Badge>
-              ))
+            : tessere.map((t) => {
+                const stato = STATO_TESSERA[t.stato] ?? { label: t.stato, variant: "gray" as const };
+                return (
+                  <Badge key={t.id} variant={stato.variant}>
+                    {SPORT_LABEL[t.sport] ?? t.sport} — {stato.label}
+                  </Badge>
+                );
+              })
           }
         </div>
       </Card>

@@ -70,21 +70,23 @@ export default function TesserePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Le mie tessere</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Le mie tessere</h1>
+        <Link
+          href="/dashboard/onboarding"
+          className="rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 transition-colors"
+        >
+          + Aggiungi tessera
+        </Link>
+      </div>
 
       {tessere.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
           <p className="text-gray-500 text-sm">
             Nessuna tessera associata al tuo profilo.
           </p>
-          <Link
-            href="/dashboard/onboarding"
-            className="inline-block mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 transition-colors"
-          >
-            Inizia il tesseramento
-          </Link>
-          <p className="text-gray-400 text-xs mt-3">
-            oppure contatta lo staff per richiedere il tesseramento.
+          <p className="text-gray-400 text-xs mt-2">
+            Usa &quot;Aggiungi tessera&quot; qui sopra, oppure contatta lo staff per richiedere il tesseramento.
           </p>
         </div>
       ) : (
