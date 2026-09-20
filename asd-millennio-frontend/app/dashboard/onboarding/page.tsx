@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getKeycloak } from "@/lib/auth/keycloak";
-import { fetchMe } from "@/lib/api/soci";
+import { fetchMe, fetchTessereSocio } from "@/lib/api/soci";
 import {
   creaProfilo,
   caricaDocumento,
@@ -35,14 +35,15 @@ export default function OnboardingPage() {
   const [file, setFile] = useState<File | null>(null);
   const [consensi, setConsensi] = useState({ privacy: false, trattamento_dati: false });
   const [categoria, setCategoria] = useState("volley");
+  const [categorieOccupate, setCategorieOccupate] = useState<Set<string>>(new Set());
 
   // Se il profilo esiste già (wizard interrotto dopo lo step 0 in una sessione
-  // precedente), riparti dallo step 1 invece di richiamare creaProfilo — che
-  // altrimenti fallirebbe con 409 "Profilo già esistente" e bloccherebbe
-  // qualunque ripresa del tesseramento.
+  // precedente, o si sta aggiungendo una tessera per un altro sport), riparti
+  // dallo step 1 invece di richiamare creaProfilo — che altrimenti fallirebbe
+  // con 409 "Profilo già esistente" e bloccherebbe qualunque ripresa.
   useEffect(() => {
     fetchMe()
-      .then((socio) => {
+      .then(async (socio) => {
         setSocioId(socio.id);
         setForm((f) => ({
           ...f,
@@ -53,6 +54,19 @@ export default function OnboardingPage() {
           telefono: socio.telefono ?? "",
         }));
         setStep(1);
+        try {
+          const tessere = await fetchTessereSocio(socio.id);
+          const occupate = new Set(
+            tessere
+              .filter((t) => t.stato === "in_attesa_pagamento" || t.stato === "attiva")
+              .map((t) => t.sport)
+          );
+          setCategorieOccupate(occupate);
+          const primaLibera = CATEGORIE.find((c) => !occupate.has(c.value));
+          if (primaLibera) setCategoria(primaLibera.value);
+        } catch {
+          // Non bloccante: se il controllo fallisce si lasciano tutte le categorie selezionabili.
+        }
       })
       .catch(() => {
         // Nessun profilo ancora: primo accesso, si parte dallo step 0.
@@ -198,10 +212,20 @@ export default function OnboardingPage() {
             <label className="block text-xs font-medium text-gray-600">Categoria</label>
             <select value={categoria} onChange={(e) => setCategoria(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              {CATEGORIE.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              {CATEGORIE.map((c) => (
+                <option key={c.value} value={c.value} disabled={categorieOccupate.has(c.value)}>
+                  {c.label}{categorieOccupate.has(c.value) ? " (già tesserato/a)" : ""}
+                </option>
+              ))}
             </select>
             <p className="text-xs text-gray-500">Verrai reindirizzato al pagamento sicuro della quota associativa.</p>
-            <button onClick={paga} disabled={busy} className={btn}>{busy ? "Reindirizzamento…" : "Paga la quota e tesserati"}</button>
+            <button
+              onClick={paga}
+              disabled={busy || categorieOccupate.has(categoria)}
+              className={btn}
+            >
+              {busy ? "Reindirizzamento…" : "Paga la quota e tesserati"}
+            </button>
           </div>
         )}
       </div>
