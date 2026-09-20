@@ -24,6 +24,7 @@ from schemas.tesseramento import (
     TesseramentoCheckoutResponse,
     TesseramentoDaVerificare,
     TesseramentoRequest,
+    TesseratoResponse,
 )
 from schemas.tessere import TesseraCreate, TesseraResponse, TesseraVerificaResponse
 
@@ -263,6 +264,18 @@ async def lista_tesseramenti_da_verificare(
 ):
     """Coda dei tesseramenti in via provvisoria da confermare (staff)."""
     return await TesseramentoService(db).lista_da_verificare()
+
+
+@router.get("/tesserati", response_model=list[TesseratoResponse])
+async def lista_tesserati(
+    stato: str | None = Query(None),
+    categoria: str | None = Query(None),
+    anno_sportivo: str | None = Query(None),
+    _user: dict = RequireStaff,
+    db: AsyncSession = Depends(get_db),
+):
+    """Elenco completo dei tesserati (tutte le tessere), con filtri opzionali."""
+    return await TesseramentoService(db).lista_tesserati(stato, categoria, anno_sportivo)
 
 
 @router.post("/verifiche/{tessera_id}/conferma", status_code=status.HTTP_204_NO_CONTENT)

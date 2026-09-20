@@ -93,6 +93,19 @@ class TesseramentoDaVerificare(BaseModel):
     documenti: list[DocumentoBreve]
 
 
+class TesseratoResponse(BaseModel):
+    """Riga della lista completa dei tesserati (tutte le tessere, non solo quelle in verifica)."""
+    tessera_id: UUID
+    numero_tessera: str
+    categoria: str
+    stato: str
+    anno_sportivo: str | None
+    data_scadenza: date | None
+    verifica_stato: str | None
+    socio: SocioBreve
+    tutore: SocioBreve | None
+
+
 # ── quote (dirigenza) ─────────────────────────────────────────────────────────
 
 class QuotaCreate(BaseModel):
