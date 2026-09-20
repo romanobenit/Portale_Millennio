@@ -104,7 +104,9 @@ export default function GestioneCampiPage() {
   const [loadingPrenotazioni, setLoadingPrenotazioni] = useState(true);
   const [filtroInizio, setFiltroInizio] = useState(oggiISO());
   const [filtroFine, setFiltroFine] = useState(oggiISO(30));
-  const [filtroStato, setFiltroStato] = useState("");
+  // Default "confermata": la vista quotidiana ("chi viene") non deve essere
+  // sporcata da carrelli rimossi/scaduti — restano un filtro esplicito.
+  const [filtroStato, setFiltroStato] = useState("confermata");
 
   // Rinfresca il token prima di ogni chiamata (l'access token dura ~5 min → evita 401)
   const authHeader = async () => {
