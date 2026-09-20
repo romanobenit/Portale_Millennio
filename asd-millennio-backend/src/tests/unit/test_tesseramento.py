@@ -407,6 +407,82 @@ async def test_riprendi_pagamento_409_se_gia_completato():
     assert e.value.status_code == 409
 
 
+# ── lista_tesserati: elenco completo per la dirigenza ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_lista_tesserati_mappa_righe_con_tutore():
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock()
+    tessera.id = uuid4()
+    tessera.numero_tessera = "SOS-2026-00003"
+    tessera.sport = "sostenitore"
+    tessera.stato = "attiva"
+    tessera.anno_sportivo = "2026-2027"
+    tessera.data_scadenza = date(2027, 6, 30)
+    tessera.verifica_stato = "confermata"
+
+    minore = MagicMock()
+    minore.id = uuid4()
+    minore.nome = "Luca"
+    minore.cognome = "Bianchi"
+    minore.codice_fiscale = "BNCLCU15A01H501U"
+    minore.is_minor = True
+
+    tutore = MagicMock()
+    tutore.id = uuid4()
+    tutore.nome = "Anna"
+    tutore.cognome = "Bianchi"
+    tutore.codice_fiscale = "BNCNNA80A41H501U"
+    tutore.is_minor = False
+
+    db = _mock_db()
+    result = MagicMock()
+    result.all.return_value = [(tessera, minore, tutore)]
+    db.execute = AsyncMock(return_value=result)
+
+    out = await TesseramentoService(db).lista_tesserati()
+
+    assert len(out) == 1
+    assert out[0].numero_tessera == "SOS-2026-00003"
+    assert out[0].socio.cognome == "Bianchi"
+    assert out[0].socio.is_minor is True
+    assert out[0].tutore is not None
+    assert out[0].tutore.nome == "Anna"
+
+
+@pytest.mark.asyncio
+async def test_lista_tesserati_senza_tutore():
+    from modules.soci.tesseramento_service import TesseramentoService
+
+    tessera = MagicMock()
+    tessera.id = uuid4()
+    tessera.numero_tessera = "VOL-2026-00001"
+    tessera.sport = "volley"
+    tessera.stato = "scaduta"
+    tessera.anno_sportivo = "2025-2026"
+    tessera.data_scadenza = date(2026, 6, 30)
+    tessera.verifica_stato = "confermata"
+
+    socio = MagicMock()
+    socio.id = uuid4()
+    socio.nome = "Mario"
+    socio.cognome = "Rossi"
+    socio.codice_fiscale = "RSSMRA80A01H501U"
+    socio.is_minor = False
+
+    db = _mock_db()
+    result = MagicMock()
+    result.all.return_value = [(tessera, socio, None)]
+    db.execute = AsyncMock(return_value=result)
+
+    out = await TesseramentoService(db).lista_tesserati(stato="scaduta")
+
+    assert len(out) == 1
+    assert out[0].stato == "scaduta"
+    assert out[0].tutore is None
+
+
 # ── verifica staff (Fase 4) ───────────────────────────────────────────────────
 
 def _res_one(obj):

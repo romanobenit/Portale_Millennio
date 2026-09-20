@@ -517,6 +517,49 @@ class TesseramentoService:
             ))
         return out
 
+    async def lista_tesserati(
+        self, stato: str | None = None, categoria: str | None = None, anno_sportivo: str | None = None,
+    ) -> list:
+        """Elenco completo dei tesserati (tutte le tessere, non solo quelle in verifica), con filtri opzionali."""
+        from sqlalchemy.orm import aliased
+        from schemas.tesseramento import SocioBreve, TesseratoResponse
+
+        Tutore = aliased(Socio)
+        q = (
+            select(Tessera, Socio, Tutore)
+            .join(Socio, Tessera.socio_id == Socio.id)
+            .outerjoin(Tutore, Socio.tutore_id == Tutore.id)
+        )
+        if stato:
+            q = q.where(Tessera.stato == stato)
+        if categoria:
+            q = q.where(Tessera.sport == categoria)
+        if anno_sportivo:
+            q = q.where(Tessera.anno_sportivo == anno_sportivo)
+        q = q.order_by(Socio.cognome, Socio.nome)
+
+        rows = (await self.db.execute(q)).all()
+        return [
+            TesseratoResponse(
+                tessera_id=t.id,
+                numero_tessera=t.numero_tessera,
+                categoria=t.sport,
+                stato=t.stato,
+                anno_sportivo=t.anno_sportivo,
+                data_scadenza=t.data_scadenza,
+                verifica_stato=t.verifica_stato,
+                socio=SocioBreve(
+                    id=socio.id, nome=socio.nome, cognome=socio.cognome,
+                    codice_fiscale=socio.codice_fiscale, is_minor=socio.is_minor,
+                ),
+                tutore=SocioBreve(
+                    id=tutore.id, nome=tutore.nome, cognome=tutore.cognome,
+                    codice_fiscale=tutore.codice_fiscale, is_minor=tutore.is_minor,
+                ) if tutore else None,
+            )
+            for t, socio, tutore in rows
+        ]
+
     async def _get_tessera_in_verifica(self, tessera_id: UUID) -> Tessera:
         t = (await self.db.execute(
             select(Tessera).where(Tessera.id == tessera_id)

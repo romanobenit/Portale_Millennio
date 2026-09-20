@@ -56,6 +56,18 @@ export interface TesseramentoDaVerificare {
   documenti: { id: string; tipo: string; filename: string }[];
 }
 
+export interface Tesserato {
+  tessera_id: string;
+  numero_tessera: string;
+  categoria: string;
+  stato: string;
+  anno_sportivo: string | null;
+  data_scadenza: string | null;
+  verifica_stato: string | null;
+  socio: { id: string; nome: string; cognome: string; codice_fiscale: string; is_minor: boolean };
+  tutore: { id: string; nome: string; cognome: string } | null;
+}
+
 // ── socio (self) ────────────────────────────────────────────────────────────
 
 export async function creaProfilo(data: OnboardingData): Promise<Socio> {
@@ -126,6 +138,15 @@ export async function firmaConsensoSocio(
 
 export async function fetchVerifiche(): Promise<TesseramentoDaVerificare[]> {
   const { data } = await apiClient.get<TesseramentoDaVerificare[]>("/soci/verifiche");
+  return data;
+}
+
+export async function fetchTesserati(filtri?: {
+  stato?: string;
+  categoria?: string;
+  anno_sportivo?: string;
+}): Promise<Tesserato[]> {
+  const { data } = await apiClient.get<Tesserato[]>("/soci/tesserati", { params: filtri });
   return data;
 }
 
