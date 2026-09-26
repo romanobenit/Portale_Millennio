@@ -167,7 +167,7 @@ function TesseraCard({
           <p className="text-sm text-gray-600">
             {SPORT_LABEL[tessera.sport] ?? tessera.sport}
             {tessera.anno_sportivo && (
-              <span className="ml-2 text-gray-400">— Anno sportivo {tessera.anno_sportivo}</span>
+              <span className="ml-2 whitespace-nowrap text-gray-400">— Anno sportivo {tessera.anno_sportivo}</span>
             )}
           </p>
         </div>

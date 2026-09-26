@@ -186,7 +186,7 @@ export function DashboardFundraisingWidget() {
       {data.top_5_vendite.length > 0 && (
         <Card title="Top 5 acquisti per importo">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead>
                 <tr className="border-b text-xs text-gray-400 text-left">
                   <th className="pb-2 pr-4 font-medium">#</th>

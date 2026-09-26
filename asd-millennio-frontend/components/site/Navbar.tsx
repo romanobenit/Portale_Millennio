@@ -10,8 +10,8 @@ import { Container } from "./Container";
 
 /**
  * Header pubblico sticky, responsive e accessibile.
- * - Desktop: navigazione inline + CTA "Area soci".
- * - Mobile: menu a comparsa (hamburger) con gestione focus/aria.
+ * - Desktop: navigazione inline + CTA "Prenota campo" e "Area soci".
+ * - Mobile: "Area soci" sempre visibile + menu a comparsa (hamburger) con gestione focus/aria.
  */
 export function Navbar() {
   const pathname = usePathname();
@@ -64,36 +64,55 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 lg:flex">
           <Link
+            href={portalLinks.prenotaCampo}
+            className="whitespace-nowrap rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+          >
+            Prenota campo
+          </Link>
+          <Link
             href={portalLinks.areaSoci}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            className="whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
           >
             Area soci
           </Link>
         </div>
 
-        {/* Toggle mobile */}
-        <button
-          type="button"
-          className="inline-flex items-center justify-center rounded-md p-2 text-slate-700 lg:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-600"
-          aria-expanded={open}
-          aria-controls="mobile-menu"
-          aria-label={open ? "Chiudi menu" : "Apri menu"}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-            {open ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-            )}
-          </svg>
-        </button>
+        <div className="flex shrink-0 items-center gap-1 lg:hidden">
+          <Link
+            href={portalLinks.areaSoci}
+            className="whitespace-nowrap rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
+          >
+            Area soci
+          </Link>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-md p-2 text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-600"
+            aria-expanded={open}
+            aria-controls="mobile-menu"
+            aria-label={open ? "Chiudi menu" : "Apri menu"}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              {open ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+              )}
+            </svg>
+          </button>
+        </div>
       </Container>
 
       {/* Pannello mobile */}
       {open && (
         <nav id="mobile-menu" aria-label="Principale (mobile)" className="lg:hidden">
           <Container className="space-y-1 border-t border-slate-200 bg-white py-4">
+            <Link
+              href={portalLinks.prenotaCampo}
+              className="mb-2 block rounded-lg bg-accent-500 px-3 py-2.5 text-center text-base font-semibold text-white"
+            >
+              Prenota campo
+            </Link>
             {mainNav.map((item) => (
               <Link
                 key={item.href}
@@ -109,12 +128,6 @@ export function Navbar() {
                 {item.label}
               </Link>
             ))}
-            <Link
-              href={portalLinks.areaSoci}
-              className="mt-2 block rounded-lg bg-brand-600 px-3 py-2.5 text-center text-base font-semibold text-white"
-            >
-              Area soci
-            </Link>
           </Container>
         </nav>
       )}

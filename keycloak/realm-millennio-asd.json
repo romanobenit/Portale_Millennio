@@ -1,6 +1,7 @@
 {
   "id" : "fafc0bf4-bff6-43ae-9c6c-c41a3f44d5c1",
   "realm" : "millennio-asd",
+  "displayName" : "ASD Millennio",
   "notBefore" : 0,
   "defaultSignatureAlgorithm" : "RS256",
   "revokeRefreshToken" : false,
@@ -1261,8 +1262,9 @@
       }
     } ]
   },
-  "internationalizationEnabled" : false,
-  "supportedLocales" : [ ],
+  "internationalizationEnabled" : true,
+  "supportedLocales" : [ "it" ],
+  "defaultLocale" : "it",
   "authenticationFlows" : [ {
     "id" : "ced03242-5b85-4766-825b-da1f20c50a10",
     "alias" : "Account verification options",

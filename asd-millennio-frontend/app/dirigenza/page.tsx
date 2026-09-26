@@ -39,7 +39,7 @@ export default function DirigenzaPage() {
     <div className="space-y-6">
       {/* Titolo pagina */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Panoramica</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Palasirio — raccolta fondi NFT · periodo 2027–2042
         </p>

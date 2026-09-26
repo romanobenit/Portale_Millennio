@@ -63,7 +63,7 @@ export default function MinoriPage() {
 
       {showForm && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 mb-6 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <I label="Nome" v={nuovo.nome} on={(x) => setNuovo({ ...nuovo, nome: x })} />
             <I label="Cognome" v={nuovo.cognome} on={(x) => setNuovo({ ...nuovo, cognome: x })} />
           </div>

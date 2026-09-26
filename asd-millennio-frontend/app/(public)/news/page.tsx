@@ -6,7 +6,7 @@ import { SocialIcons } from "@/components/site/SocialIcons";
 import { news } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "News",
+  title: "Notizie",
   description:
     "Notizie, comunicazioni e aggiornamenti dalla Polisportiva Millennio di Cercola.",
   alternates: { canonical: "/news" },
@@ -19,7 +19,7 @@ function formatData(iso: string) {
 export default function NewsPage() {
   return (
     <>
-      <PageHeader eyebrow="Aggiornamenti" title="News" subtitle="Le ultime novità dalla polisportiva." />
+      <PageHeader eyebrow="Aggiornamenti" title="Notizie" subtitle="Le ultime novità dalla polisportiva." />
 
       <Section>
         {news.length === 0 ? (

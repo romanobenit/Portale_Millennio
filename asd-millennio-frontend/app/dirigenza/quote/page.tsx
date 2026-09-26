@@ -78,7 +78,7 @@ export default function QuotePage() {
         <p className="text-gray-500 text-sm">Nessuna quota configurata. I soci non potranno tesserarsi finché non ne aggiungi almeno una.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
                 <th className="py-2 font-medium">Categoria</th>

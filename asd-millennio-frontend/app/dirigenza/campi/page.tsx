@@ -290,10 +290,10 @@ export default function GestioneCampiPage() {
         href="/dirigenza"
         className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
       >
-        ← Torna alla dashboard
+        ← Torna alla panoramica
       </Link>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestione Campi</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -302,7 +302,7 @@ export default function GestioneCampiPage() {
         </div>
         <button
           onClick={apriNuovo}
-          className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 transition-colors"
+          className="self-start sm:self-auto whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 transition-colors"
         >
           + Nuovo slot
         </button>
@@ -408,7 +408,7 @@ export default function GestioneCampiPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-3 py-2">Data</th>
@@ -467,7 +467,7 @@ export default function GestioneCampiPage() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-sm text-left whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3">Giorno</th>

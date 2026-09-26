@@ -16,7 +16,7 @@ import { setAuthToken } from "@/lib/api/client";
 const NAV_ITEMS = [
   {
     href: "/dirigenza",
-    label: "Dashboard",
+    label: "Panoramica",
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -83,7 +83,7 @@ function LiveDot() {
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
       </span>
-      Live 5s
+      <span className="hidden sm:inline">In tempo reale</span>
     </span>
   );
 }
@@ -92,6 +92,18 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [stato, setStato] = useState<"loading" | "ok" | "negato">("loading");
   const [ora, setOra] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     // initKeycloakOnce usa un flag modulo-level: sicuro con StrictMode (doppio mount)
@@ -129,6 +141,13 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
 
   const logout = () => getKeycloak().logout({ redirectUri: window.location.origin });
 
+  const navItemClass = (href: string) => {
+    const active = href === "/dirigenza" ? pathname === "/dirigenza" : pathname.startsWith(href);
+    return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition ${
+      active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+    }`;
+  };
+
   if (stato === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -159,53 +178,78 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+          <div className="w-7 h-7 shrink-0 rounded-lg bg-blue-600 flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
           </div>
-          <span className="font-bold text-gray-900">ASD Millennio</span>
-          <span className="text-gray-300">·</span>
-          <span className="text-sm text-gray-500">Area dirigenza</span>
+          <span className="font-bold text-gray-900 truncate">ASD Millennio</span>
+          <span className="text-gray-300 hidden sm:inline">·</span>
+          <span className="text-sm text-gray-500 hidden sm:inline">Area dirigenza</span>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-3 md:gap-4 text-sm">
           <LiveDot />
           <span className="tabular-nums font-mono text-xs text-gray-400 hidden sm:inline">{ora}</span>
-          <Link href="/dashboard" className="text-blue-600 hover:underline text-xs font-medium">
+          <Link href="/dashboard" className="hidden md:inline text-blue-600 hover:underline text-xs font-medium">
             ← Area soci
           </Link>
-          <a href="/" className="text-gray-400 hover:text-gray-600 text-xs">Sito pubblico</a>
-          <button onClick={logout} className="text-gray-400 hover:text-gray-700 text-xs">Esci</button>
+          <a href="/" className="hidden md:inline text-gray-400 hover:text-gray-600 text-xs">Sito pubblico</a>
+          <button onClick={logout} className="hidden md:inline text-gray-400 hover:text-gray-700 text-xs">Esci</button>
+          <button
+            type="button"
+            className="md:hidden inline-flex items-center justify-center rounded-md p-2 -mr-2 text-gray-700 hover:bg-gray-100"
+            aria-expanded={menuOpen}
+            aria-controls="dirigenza-mobile-menu"
+            aria-label={menuOpen ? "Chiudi menu" : "Apri menu"}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              {menuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+              )}
+            </svg>
+          </button>
         </div>
+
+      {menuOpen && (
+        <nav
+          id="dirigenza-mobile-menu"
+          aria-label="Area dirigenza (mobile)"
+          className="md:hidden absolute inset-x-0 top-full h-[calc(100dvh-100%)] overflow-y-auto border-t border-gray-200 bg-white p-4 space-y-1 shadow-lg"
+        >
+          {NAV_ITEMS.map((item) => (
+            <Link key={item.href} href={item.href} className={navItemClass(item.href)}>
+              {item.icon}
+              {item.label}
+            </Link>
+          ))}
+          <div className="my-3 border-t border-gray-200" />
+          <Link href="/dashboard" className="block rounded-lg px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">
+            ← Area soci
+          </Link>
+          <a href="/" className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Sito pubblico</a>
+          <button onClick={logout} className="block w-full text-left rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            Esci
+          </button>
+        </nav>
+      )}
       </header>
 
       <div className="flex">
         {/* ── Sidebar ───────────────────────────────────────────────────── */}
-        <aside className="w-52 shrink-0 bg-white border-r border-gray-200 min-h-[calc(100vh-53px)] pt-6 pb-4 px-3">
+        <aside className="hidden md:block w-52 shrink-0 bg-white border-r border-gray-200 min-h-[calc(100vh-57px)] pt-6 pb-4 px-3">
           <nav className="space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const active =
-                item.href === "/dirigenza"
-                  ? pathname === "/dirigenza"
-                  : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition
-                    ${active
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              );
-            })}
+            {NAV_ITEMS.map((item) => (
+              <Link key={item.href} href={item.href} className={navItemClass(item.href)}>
+                {item.icon}
+                {item.label}
+              </Link>
+            ))}
           </nav>
 
           <div className="mt-8 px-3">
@@ -219,7 +263,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
         </aside>
 
         {/* ── Contenuto (le pagine dirigenza) ───────────────────────────── */}
-        <main className="flex-1 p-6 max-w-5xl">{children}</main>
+        <main className="flex-1 min-w-0 p-4 md:p-6 max-w-5xl">{children}</main>
       </div>
     </div>
   );

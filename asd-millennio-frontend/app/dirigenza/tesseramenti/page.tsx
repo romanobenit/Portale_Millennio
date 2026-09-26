@@ -206,7 +206,7 @@ export default function VerificheTesseramentiPage() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3">Tessera</th>

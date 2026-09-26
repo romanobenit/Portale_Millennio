@@ -101,11 +101,11 @@ export default function PricingPage() {
   const tipi = ["tariffa_base", "leva_data", "leva_scarsita", "sconto_promo"] as const;
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="max-w-5xl mx-auto space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="text-2xl font-bold text-gray-900">Gestione Pricing</h1>
         <button onClick={() => router.push("/dirigenza")} className="text-sm text-blue-600 hover:underline">
-          ← Dashboard
+          ← Panoramica
         </button>
       </div>
 
@@ -120,7 +120,7 @@ export default function PricingPage() {
               <p className="text-sm text-gray-400">Nessuna regola configurata</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm whitespace-nowrap">
                   <thead>
                     <tr className="border-b text-xs text-gray-500 text-left">
                       <th className="pb-2 pr-4">Nome</th>
