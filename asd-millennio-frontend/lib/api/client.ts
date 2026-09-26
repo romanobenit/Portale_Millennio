@@ -47,10 +47,18 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (res) => res,
   (err) => {
-    const msg =
-      err.response?.data?.message ||
-      err.response?.data?.detail ||
-      "Errore di rete";
+    const status = err.response?.status;
+    const data = err.response?.data;
+    // 422 di FastAPI/Pydantic: detail è una lista di oggetti con testi in inglese.
+    // 429 di slowapi: messaggio in inglese ("Rate limit exceeded").
+    let msg: string;
+    if (status === 429) {
+      msg = "Troppe richieste: riprova tra qualche istante.";
+    } else if (Array.isArray(data?.detail)) {
+      msg = "Dati non validi: controlla i campi inseriti.";
+    } else {
+      msg = data?.message || data?.detail || "Errore di rete";
+    }
     return Promise.reject(new Error(msg));
   }
 );

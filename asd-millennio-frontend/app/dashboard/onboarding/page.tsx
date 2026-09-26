@@ -176,7 +176,7 @@ export default function OnboardingPage() {
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         {step === 0 && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Nome" value={form.nome} onChange={(v) => set("nome", v)} />
               <Field label="Cognome" value={form.cognome} onChange={(v) => set("cognome", v)} />
             </div>

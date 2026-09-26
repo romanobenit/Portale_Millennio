@@ -39,12 +39,12 @@ export default function RendicontoPage() {
   const totaleOrePeriodo = data?.fasce.reduce((s, f) => s + f.ore_totali_stagione, 0) ?? 0;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6 print:p-0">
+    <div className="max-w-4xl mx-auto space-y-6 print:p-0">
       {/* Header navigazione — nascosto in stampa */}
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">Rendiconto annuale</h1>
         <button onClick={() => router.push("/dirigenza")} className="text-sm text-blue-600 hover:underline">
-          ← Dashboard
+          ← Panoramica
         </button>
       </div>
 
@@ -116,7 +116,7 @@ export default function RendicontoPage() {
           {/* Tabella dettaglio per fascia */}
           <Card title="Dettaglio per fascia oraria">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm whitespace-nowrap">
                 <thead>
                   <tr className="border-b text-xs text-gray-400 text-left">
                     <th className="pb-2 pr-6">Fascia</th>

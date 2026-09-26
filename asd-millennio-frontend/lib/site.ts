@@ -44,7 +44,7 @@ export const mainNav: NavItem[] = [
   { href: "/attivita", label: "Attività" },
   { href: "/corsi", label: "Corsi" },
   { href: "/eventi", label: "Eventi" },
-  { href: "/news", label: "News" },
+  { href: "/news", label: "Notizie" },
   { href: "/contatti", label: "Contatti" },
 ];
 

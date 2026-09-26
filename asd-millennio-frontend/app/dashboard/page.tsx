@@ -61,10 +61,10 @@ export default function ProfiloPage() {
       <h1 className="text-2xl font-bold text-gray-900">Il mio profilo</h1>
 
       <Card title="Dati personali">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
           <div><dt className="text-gray-500">Nome</dt><dd className="font-medium">{socio.nome}</dd></div>
           <div><dt className="text-gray-500">Cognome</dt><dd className="font-medium">{socio.cognome}</dd></div>
-          <div><dt className="text-gray-500">Email</dt><dd className="font-medium">{socio.email}</dd></div>
+          <div><dt className="text-gray-500">Email</dt><dd className="font-medium break-all">{socio.email}</dd></div>
           <div><dt className="text-gray-500">Telefono</dt><dd className="font-medium">{socio.telefono ?? "—"}</dd></div>
           <div><dt className="text-gray-500">Data di nascita</dt><dd className="font-medium">{socio.data_nascita}</dd></div>
         </dl>

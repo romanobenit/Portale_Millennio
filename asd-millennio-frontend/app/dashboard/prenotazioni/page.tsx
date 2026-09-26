@@ -189,7 +189,7 @@ export default function PrenotazioniPage() {
       {/* ── Carrello ─────────────────────────────────────────────────────── */}
       {carrello.length > 0 && (
         <section className="rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3">
             <h2 className="text-lg font-semibold text-gray-900">
               Carrello · {carrello.length} {carrello.length === 1 ? "ora" : "ore"}
             </h2>
@@ -202,15 +202,15 @@ export default function PrenotazioniPage() {
             {carrello.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between rounded-lg border border-blue-100 bg-white px-4 py-2.5"
+                className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white px-3 sm:px-4 py-2.5"
               >
-                <div className="text-sm">
+                <div className="text-sm min-w-0">
                   <span className="font-medium text-gray-900 capitalize">{formattaData(c.data)}</span>
                   <span className="text-gray-600">
                     {" · "}{formattaOra(c.ora_inizio)}–{formattaOra(c.ora_fine)} · Campo {c.campo}
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex shrink-0 items-center gap-3">
                   <span className="text-sm font-semibold text-gray-800">€{c.importo_eur}</span>
                   <button
                     onClick={() => rimuovi(c.id)}
@@ -223,14 +223,14 @@ export default function PrenotazioniPage() {
             ))}
           </div>
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-gray-700">
               Totale: <span className="text-lg font-bold text-gray-900">€{totaleCarrello.toFixed(2)}</span>
             </div>
             <button
               onClick={paga}
               disabled={pagamento}
-              className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
             >
               {pagamento ? "Reindirizzamento…" : `Paga tutto — €${totaleCarrello.toFixed(2)}`}
             </button>
@@ -246,9 +246,9 @@ export default function PrenotazioniPage() {
             {prenotazioni.map((p) => (
               <div
                 key={p.id}
-                className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 sm:px-4 py-3"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="font-medium text-gray-900 text-sm capitalize">
                     {formattaData(p.data)} · {formattaOra(p.ora_inizio)}–{formattaOra(p.ora_fine)} · Campo {p.campo}
                   </p>
@@ -268,9 +268,9 @@ export default function PrenotazioniPage() {
 
       {/* ── Disponibilità per ora ────────────────────────────────────────── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
           <h2 className="text-lg font-semibold text-gray-800">Disponibilità prossimi {orizzonteGiorni} giorni</h2>
-          <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-blue-100 border border-blue-300" /> libero
             </span>
@@ -301,8 +301,8 @@ export default function PrenotazioniPage() {
         {!loading && !error && giorni.length > 0 && (
           <div className="grid gap-3 lg:grid-cols-2">
             {giorni.map(([data, slots]) => (
-              <div key={data} className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="flex items-baseline justify-between mb-3">
+              <div key={data} className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 mb-3">
                   <h3 className="font-semibold text-gray-900 text-sm capitalize">{formattaData(data)}</h3>
                   <span className="text-xs text-gray-500">
                     {slots[0].sport.join(" / ")} · €{slots[0].costo_ora}/ora
