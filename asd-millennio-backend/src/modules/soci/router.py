@@ -23,6 +23,8 @@ from schemas.tesseramento import (
     SocioOnboarding,
     TesseramentoCheckoutResponse,
     TesseramentoDaVerificare,
+    TesseramentoInSedeRequest,
+    TesseramentoInSedeResponse,
     TesseramentoRequest,
     TesseratoResponse,
 )
@@ -56,7 +58,7 @@ async def lista_soci(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await SociService(db).lista_soci(page, limit)
 
@@ -65,7 +67,7 @@ async def lista_soci(
 async def crea_socio(
     data: SocioCreate,
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await SociService(db).crea_socio(data)
 
@@ -74,15 +76,25 @@ async def crea_socio(
 async def importa_soci_csv(
     file: UploadFile = File(...),
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await SociService(db).importa_csv(file)
+
+
+@router.post("/tesseramento-in-sede", response_model=TesseramentoInSedeResponse, status_code=201)
+async def tesseramento_in_sede(
+    data: TesseramentoInSedeRequest,
+    user: dict = RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """La dirigenza tessera una persona in sede: quota pagata sul posto, tessera subito attiva."""
+    return await TesseramentoService(db).tesseramento_in_sede(data, user["sub"])
 
 
 @router.get("/me", response_model=SocioResponse)
 async def get_me(
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     repo = SociRepository(db)
     socio = await repo.get_by_keycloak_id(user["sub"])
@@ -113,7 +125,7 @@ async def get_me(
 async def crea_profilo_self(
     data: SocioOnboarding,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Primo accesso: l'adulto crea il proprio profilo (una volta sola)."""
     return await TesseramentoService(db).crea_profilo_self(
@@ -140,7 +152,7 @@ async def carica_documento_self(
     socio_id: UUID | None = Query(None, description="socio destinatario (default: il proprio; per minori il figlio)"),
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Carica un documento sensibile (cifrato) per sé o per un proprio minore."""
     me, target = await _socio_target(user, db, socio_id)
@@ -157,7 +169,7 @@ async def carica_documento_self(
 async def lista_documenti_self(
     socio_id: UUID | None = Query(None, description="socio destinatario (default: il proprio; per minori il figlio)"),
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Elenca i documenti caricati per sé o per un proprio minore."""
     _me, target = await _socio_target(user, db, socio_id)
@@ -168,7 +180,7 @@ async def lista_documenti_self(
 async def scarica_documento(
     doc_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Scarica un documento (decifrato). Solo proprietario/tutore o staff."""
     doc = (await db.execute(
@@ -202,7 +214,7 @@ async def scarica_documento(
 async def avvia_tesseramento_self(
     data: TesseramentoRequest,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Avvia il tesseramento per una categoria: crea la tessera e la sessione di pagamento della quota."""
     me = await SociRepository(db).get_by_keycloak_id(user["sub"])
@@ -215,7 +227,7 @@ async def avvia_tesseramento_self(
 async def riprendi_pagamento_tessera(
     tessera_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Recupera/ricrea il checkout Stripe di una propria tessera in attesa di pagamento."""
     me = await SociRepository(db).get_by_keycloak_id(user["sub"])
@@ -231,7 +243,7 @@ async def carica_certificato_medico(
     scadenza: date = Query(...),
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """
     Carica il certificato di idoneità sportiva per una propria tessera (o di un
@@ -254,7 +266,7 @@ async def carica_certificato_medico(
 async def aggiungi_minore(
     data: MinoreCreate,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Il tutore aggiunge un figlio minorenne (senza login proprio)."""
     me = await SociRepository(db).get_by_keycloak_id(user["sub"])
@@ -266,7 +278,7 @@ async def aggiungi_minore(
 @router.get("/me/minori", response_model=list[SocioResponse])
 async def lista_miei_minori(
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     me = await SociRepository(db).get_by_keycloak_id(user["sub"])
     if not me:
@@ -279,7 +291,7 @@ async def avvia_tesseramento_minore(
     minore_id: UUID,
     data: TesseramentoRequest,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Avvia il tesseramento di un proprio minore (pagato dal tutore)."""
     me, minore = await _socio_target(user, db, minore_id)
@@ -295,7 +307,7 @@ async def avvia_tesseramento_minore(
 @router.get("/verifiche", response_model=list[TesseramentoDaVerificare])
 async def lista_tesseramenti_da_verificare(
     _user: dict = RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Coda dei tesseramenti in via provvisoria da confermare (staff)."""
     return await TesseramentoService(db).lista_da_verificare()
@@ -307,7 +319,7 @@ async def lista_tesserati(
     categoria: str | None = Query(None),
     anno_sportivo: str | None = Query(None),
     _user: dict = RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Elenco completo dei tesserati (tutte le tessere), con filtri opzionali."""
     return await TesseramentoService(db).lista_tesserati(stato, categoria, anno_sportivo)
@@ -317,7 +329,7 @@ async def lista_tesserati(
 async def conferma_tesseramento(
     tessera_id: UUID,
     user: dict = RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     verificatore = await SociRepository(db).get_by_keycloak_id(user["sub"])
     await TesseramentoService(db).conferma_verifica(tessera_id, verificatore.id if verificatore else None)
@@ -327,7 +339,7 @@ async def conferma_tesseramento(
 async def rifiuta_tesseramento(
     tessera_id: UUID,
     user: dict = RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Rifiuta il tesseramento: la tessera decade e la quota diventa erogazione liberale."""
     verificatore = await SociRepository(db).get_by_keycloak_id(user["sub"])
@@ -338,7 +350,7 @@ async def rifiuta_tesseramento(
 async def get_socio(
     socio_id: UUID,
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     socio = await SociRepository(db).get_by_id(socio_id)
     if not socio:
@@ -351,7 +363,7 @@ async def aggiorna_socio(
     socio_id: UUID,
     data: SocioUpdate,
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await SociService(db).aggiorna_socio(socio_id, data)
 
@@ -363,7 +375,7 @@ async def lista_tessere_socio(
     socio_id: UUID,
     stato: str | None = Query(None),
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Lista tessere di un socio, con filtro opzionale per stato (es. ?stato=attiva)."""
     await _require_own_or_staff(socio_id, user, db)
@@ -379,7 +391,7 @@ async def emetti_tessera(
     socio_id: UUID,
     data: TesseraCreate,
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     data.socio_id = socio_id
     return await SociService(db).emetti_tessera(data)
@@ -390,7 +402,7 @@ async def attiva_tessera(
     socio_id: UUID,
     tessera_id: UUID,
     _user=RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await SociService(db).attiva_tessera(tessera_id)
 
@@ -402,7 +414,7 @@ async def registra_consenso(
     socio_id: UUID,
     data: ConsensoCreate,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     await _require_own_or_staff(socio_id, user, db)
 
@@ -440,7 +452,7 @@ async def revoca_consenso(
     socio_id: UUID,
     consenso_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     await _require_own_or_staff(socio_id, user, db)
     result = await db.execute(
@@ -456,7 +468,7 @@ async def revoca_consenso(
 async def lista_consensi_socio(
     socio_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Lista consensi GDPR del socio — include attivi e revocati."""
     await _require_own_or_staff(socio_id, user, db)
@@ -467,7 +479,7 @@ async def lista_consensi_socio(
 async def lista_minori_tutore(
     socio_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Lista dei minorenni di cui il socio è tutore legale."""
     await _require_own_or_staff(socio_id, user, db)
@@ -478,7 +490,7 @@ async def lista_minori_tutore(
 async def elimina_socio(
     socio_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """
     Diritto alla cancellazione GDPR Art. 17.
