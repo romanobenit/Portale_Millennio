@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { fetchQuote, creaQuota, aggiornaQuota, Quota } from "@/lib/api/tesseramento";
 import toast from "react-hot-toast";
 
-const CATEGORIE = ["volley", "badminton", "kung_fu", "pickleball", "sostenitore"];
+const CATEGORIE = ["volley", "badminton", "kung_fu", "pickleball", "sostenitore", "community"];
 const CAT_LABEL: Record<string, string> = {
-  volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball", sostenitore: "Sostenitore",
+  volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball", sostenitore: "Sostenitore", community: "Iscrizione community",
 };
 const ANNO = "2026-2027";
 
@@ -54,7 +54,10 @@ export default function QuotePage() {
   return (
     <div>
       <h1 className="text-xl font-bold text-gray-900 mb-1">Quote tessera</h1>
-      <p className="text-gray-500 text-sm mb-6">Quote associative per categoria e fascia (adulto/minore), anno sportivo {ANNO}.</p>
+      <p className="text-gray-500 text-sm mb-6">
+        Quote associative per categoria e fascia (adulto/minore), anno sportivo {ANNO}. L&apos;«Iscrizione community»
+        (chi ha già la tessera di un&apos;altra ASD) si paga una volta sola e non scade.
+      </p>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>

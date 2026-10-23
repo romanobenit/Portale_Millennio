@@ -11,6 +11,7 @@ from models.slot_calendario import SlotCalendario
 from models.slot_template_campo import SlotTemplateCampo
 from models.socio import Socio
 from models.tessera import Tessera
+from models.tessera_esterna import TesseraEsterna
 from models.wallet import WalletCustodiale
 from models.webhook_log import WebhookLog
 
@@ -34,4 +35,5 @@ __all__ = [
     "EventoCampo",
     "PrenotazioneEvento",
     "ListaAttesaEvento",
+    "TesseraEsterna",
 ]

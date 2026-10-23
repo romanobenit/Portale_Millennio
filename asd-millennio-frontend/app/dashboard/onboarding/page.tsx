@@ -8,8 +8,15 @@ import {
   caricaDocumento,
   avviaTesseramento,
   firmaConsensoSocio,
+  caricaTesseraEsterna,
   OnboardingData,
+  type TesseraEsternaInput,
 } from "@/lib/api/tesseramento";
+import {
+  TesseraEsternaCampi,
+  TESSERA_ESTERNA_VUOTA,
+  erroreTesseraEsterna,
+} from "@/components/soci/TesseraEsternaCampi";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
@@ -19,6 +26,7 @@ const CATEGORIE: { value: string; label: string }[] = [
   { value: "kung_fu", label: "Kung Fu" },
   { value: "pickleball", label: "Pickleball" },
   { value: "sostenitore", label: "Socio sostenitore" },
+  { value: "community", label: "Community — ho già la tessera di un'altra ASD" },
 ];
 
 const STEPS = ["Dati", "Documento", "Consensi", "Categoria e pagamento"];
@@ -36,6 +44,11 @@ export default function OnboardingPage() {
   const [consensi, setConsensi] = useState({ privacy: false, trattamento_dati: false });
   const [categoria, setCategoria] = useState("volley");
   const [categorieOccupate, setCategorieOccupate] = useState<Set<string>>(new Set());
+  const [tesseraEsterna, setTesseraEsterna] = useState<TesseraEsternaInput>(TESSERA_ESTERNA_VUOTA);
+  const [fileEsterna, setFileEsterna] = useState<File | null>(null);
+  // evita di ricaricare la stessa tessera se il pagamento va ritentato
+  const [esternaCaricata, setEsternaCaricata] = useState(false);
+  const community = categoria === "community";
 
   // Se il profilo esiste già (wizard interrotto dopo lo step 0 in una sessione
   // precedente, o si sta aggiungendo una tessera per un altro sport), riparti
@@ -142,8 +155,19 @@ export default function OnboardingPage() {
   };
 
   const paga = async () => {
+    if (community && !esternaCaricata) {
+      const errore = erroreTesseraEsterna(tesseraEsterna, fileEsterna);
+      if (errore) {
+        toast.error(errore);
+        return;
+      }
+    }
     setBusy(true);
     try {
+      if (community && !esternaCaricata) {
+        await caricaTesseraEsterna(tesseraEsterna, fileEsterna!);
+        setEsternaCaricata(true);
+      }
       const res = await avviaTesseramento(categoria);
       window.location.href = res.stripe_checkout_url;
     } catch (e: unknown) {
@@ -156,8 +180,8 @@ export default function OnboardingPage() {
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">Tesseramento</h1>
       <p className="text-gray-500 text-sm mb-6">
-        Completa i passaggi per tesserarti. La tessera sarà attiva subito dopo il pagamento;
-        lo staff conferma la validità entro 30 giorni.
+        Tesserati alla Millennio oppure, se hai già la tessera di un&apos;altra ASD, iscriviti alla community.
+        L&apos;iscrizione è attiva subito dopo il pagamento; lo staff conferma la validità entro 30 giorni.
       </p>
 
       <div className="flex items-center gap-2 mb-8">
@@ -218,13 +242,28 @@ export default function OnboardingPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500">Verrai reindirizzato al pagamento sicuro della quota associativa.</p>
+            {community && (
+              <div className="space-y-3 rounded-lg bg-gray-50 p-3">
+                <p className="text-sm text-gray-600">
+                  L&apos;iscrizione community non scade. Potrai prenotare gli eventi finché la tessera della tua ASD
+                  è valida: quando la rinnovi, caricala da «Le mie tessere».
+                </p>
+                {esternaCaricata ? (
+                  <p className="text-sm font-medium text-green-700">Tessera caricata.</p>
+                ) : (
+                  <TesseraEsternaCampi dati={tesseraEsterna} onChange={setTesseraEsterna} onFile={setFileEsterna} />
+                )}
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Verrai reindirizzato al pagamento sicuro {community ? "dell'iscrizione community" : "della quota associativa"}.
+            </p>
             <button
               onClick={paga}
               disabled={busy || categorieOccupate.has(categoria)}
               className={btn}
             >
-              {busy ? "Reindirizzamento…" : "Paga la quota e tesserati"}
+              {busy ? "Reindirizzamento…" : community ? "Paga e iscriviti alla community" : "Paga la quota e tesserati"}
             </button>
           </div>
         )}

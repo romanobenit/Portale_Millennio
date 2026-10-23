@@ -8,7 +8,9 @@ from pydantic import ValidationError
 from modules.eventi.service import (
     TZ,
     calcola_posti,
+    fine_abilitazione,
     fine_evento,
+    motivo_non_abilitato,
     scadenza_annullamento,
     solo_online,
 )
@@ -106,3 +108,36 @@ def test_update_sport_validato():
 def test_segna_distingue_campo_assente_da_null():
     assert "presenza" not in SegnaPresenzaRequest(pagato_in_sede=True).model_fields_set
     assert "presenza" in SegnaPresenzaRequest(presenza=None).model_fields_set
+
+
+# ── abilitazione ai campi (tessera Millennio o iscrizione community) ──────────
+
+def test_abilitazione_nessuna_tessera():
+    assert fine_abilitazione([], []) is None
+
+
+def test_abilitazione_tessera_millennio_fino_a_scadenza():
+    assert fine_abilitazione([("volley", date(2027, 6, 30))], []) == date(2027, 6, 30)
+
+
+def test_abilitazione_tessera_esterna_senza_iscrizione_non_conta():
+    assert fine_abilitazione([], [date(2027, 8, 31)]) is None
+
+
+def test_abilitazione_community_usa_la_tessera_esterna_piu_lunga():
+    fine = fine_abilitazione([("community", None)], [date(2026, 12, 31), date(2027, 8, 31)])
+    assert fine == date(2027, 8, 31)
+
+
+def test_abilitazione_community_senza_tessera_esterna_valida():
+    assert fine_abilitazione([("community", None)], []) is None
+
+
+def test_abilitazione_vince_la_scadenza_piu_lontana():
+    fine = fine_abilitazione([("community", None), ("pickleball", date(2027, 6, 30))], [date(2027, 1, 31)])
+    assert fine == date(2027, 6, 30)
+
+
+def test_motivo_non_abilitato():
+    assert "tessera Millennio" in motivo_non_abilitato(None)
+    assert "31/08/2027" in motivo_non_abilitato(date(2027, 8, 31))

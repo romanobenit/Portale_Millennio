@@ -39,7 +39,7 @@ export interface MieiEventi {
   lista_attesa: string[];
   assenze: number;
   solo_online: boolean;
-  tessera_attiva: boolean;
+  abilitato_fino_al: string | null; // null = non abilitato ai campi
 }
 
 export interface EventoDirigenza extends EventoPubblico {
@@ -83,7 +83,7 @@ export interface SocioRicerca {
   nome: string;
   cognome: string;
   codice_fiscale: string;
-  tessera_attiva: boolean;
+  abilitato_fino_al: string | null;
   assenze: number;
   solo_online: boolean;
 }
@@ -220,4 +220,19 @@ export function formattaOra(hhmmss: string): string {
 export function formattaPrezzo(eur: string | number): string {
   const n = Number(eur);
   return n === 0 ? "Gratis" : `€${n.toFixed(2).replace(".", ",")}`;
+}
+
+export function formattaData(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("it-IT");
+}
+
+/** Motivo per cui non si può prenotare l'evento del giorno `dataEvento` (null = si può). */
+export function motivoNonPrenotabile(abilitatoFinoAl: string | null, dataEvento: string): string | null {
+  if (!abilitatoFinoAl) {
+    return "Per prenotare serve la tessera Millennio oppure l'iscrizione community con la tessera di un'altra ASD.";
+  }
+  if (dataEvento > abilitatoFinoAl) {
+    return `La tessera vale fino al ${formattaData(abilitatoFinoAl)}: per questo evento va rinnovata o aggiornata.`;
+  }
+  return null;
 }

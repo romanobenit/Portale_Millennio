@@ -115,7 +115,9 @@ class MieiEventiResponse(BaseModel):
     lista_attesa: list[UUID]
     assenze: int
     solo_online: bool          # True dopo 2 assenze "pago in sede"
-    tessera_attiva: bool
+    # Fino a quando può usare i campi (tessera Millennio o tessera esterna con
+    # iscrizione community); None = non abilitato.
+    abilitato_fino_al: date | None
 
 
 class PrenotaEventoResponse(BaseModel):
@@ -164,6 +166,6 @@ class SocioRicercaResponse(BaseModel):
     nome: str
     cognome: str
     codice_fiscale: str
-    tessera_attiva: bool
+    abilitato_fino_al: date | None
     assenze: int
     solo_online: bool

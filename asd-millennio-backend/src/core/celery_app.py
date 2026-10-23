@@ -9,7 +9,7 @@ celery_app = Celery(
     "millennio",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["tasks.mint", "tasks.tesseramento", "tasks.certificato_medico"],
+    include=["tasks.mint", "tasks.tesseramento", "tasks.certificato_medico", "tasks.tessera_esterna"],
 )
 
 celery_app.conf.update(
@@ -40,6 +40,11 @@ celery_app.conf.update(
         "alert-scadenza-certificato-medico": {
             "task": "tasks.certificato_medico.alert_scadenza_certificato",
             "schedule": crontab(hour=7, minute=0),
+        },
+        # Alert scadenza tessera di un'altra ASD (iscrizione community).
+        "alert-scadenza-tessera-esterna": {
+            "task": "tasks.tessera_esterna.alert_scadenza_tessera_esterna",
+            "schedule": crontab(hour=7, minute=10),
         },
     },
 )

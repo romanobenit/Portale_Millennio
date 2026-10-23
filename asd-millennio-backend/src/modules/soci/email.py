@@ -68,3 +68,49 @@ async def invia_alert_certificato_medico(
     except Exception as e:  # noqa: BLE001 — l'email non deve mai far fallire il task
         logger.error("Errore invio alert certificato medico (%s, tessera %s): %s", to, numero_tessera, e)
         return False
+
+
+async def invia_alert_tessera_esterna(
+    *,
+    to: str,
+    nome: str,
+    giorni_mancanti: int,
+    scadenza: str,
+    asd_nome: str,
+    nome_tesserato: str | None = None,
+) -> bool:
+    """Tessera dell'altra ASD in scadenza (iscrizione community). Mai solleva."""
+    if not settings.resend_api_key:
+        logger.warning("RESEND_API_KEY non configurata: alert tessera esterna non inviato.")
+        return False
+    riferimento = f" di <strong>{nome_tesserato}</strong>" if nome_tesserato else ""
+    corpo = f"""\
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#111827">
+  <h2 style="color:#b45309;margin:0 0 4px">La tessera{riferimento} sta per scadere</h2>
+  <p style="color:#6b7280;margin:0 0 16px">ASD Millennio — iscrizione community</p>
+  <p style="line-height:1.6">Ciao {nome},<br>
+  la tessera {asd_nome}{riferimento} scade tra <strong>{giorni_mancanti} giorni</strong> (il {scadenza}).
+  Dopo la scadenza non sarà più possibile prenotare gli eventi al Palasirio: quando la rinnovi,
+  carica la nuova tessera da «Le mie tessere» nell'area soci.</p>
+  <p style="font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;line-height:1.5">
+    Questo è un promemoria automatico, non serve rispondere a questa email.
+  </p>
+</div>"""
+    payload = {
+        "from": settings.email_from,
+        "to": [to],
+        "subject": f"Tessera{' di ' + nome_tesserato if nome_tesserato else ''} in scadenza tra {giorni_mancanti} giorni",
+        "html": corpo,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                RESEND_ENDPOINT, json=payload, headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            )
+        if resp.status_code >= 300:
+            logger.error("Invio alert tessera esterna fallito: HTTP %s", resp.status_code)
+            return False
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error("Errore invio alert tessera esterna: %s", e)
+        return False

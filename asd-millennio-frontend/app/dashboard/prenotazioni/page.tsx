@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { ContatorePresenze } from "@/components/eventi/ContatorePresenze";
@@ -14,6 +15,7 @@ import {
   formattaDataEvento,
   formattaOra,
   formattaPrezzo,
+  motivoNonPrenotabile,
   iscriviListaAttesa,
   prenotaEvento,
   type EventoPubblico,
@@ -122,7 +124,7 @@ export default function PrenotaEventiPage() {
 
   const prenotatoPer = new Map((miei?.prenotazioni ?? []).map((p) => [p.evento_id, p]));
   const inAttesa = new Set(miei?.lista_attesa ?? []);
-  const puoInSede = !!miei?.tessera_attiva && !miei?.solo_online;
+  const abilitatoFinoAl = miei?.abilitato_fino_al ?? null;
 
   return (
     <div className="space-y-8">
@@ -228,7 +230,17 @@ export default function PrenotaEventiPage() {
                     />
                   </div>
 
-                  {mia ? (
+                  {!mia && motivoNonPrenotabile(abilitatoFinoAl, ev.data) ? (
+                    <div className="space-y-1">
+                      <p className="text-sm text-gray-600">{motivoNonPrenotabile(abilitatoFinoAl, ev.data)}</p>
+                      <Link
+                        href={abilitatoFinoAl ? "/dashboard/tessere" : "/dashboard/onboarding"}
+                        className="text-sm font-medium text-blue-700 hover:underline"
+                      >
+                        {abilitatoFinoAl ? "Vai a «Le mie tessere»" : "Tesserati o iscriviti alla community"}
+                      </Link>
+                    </div>
+                  ) : mia ? (
                     mia.stato === "confermata" ? (
                       <p className="text-sm font-medium text-green-700">Sei prenotato per questo evento.</p>
                     ) : (
@@ -257,18 +269,14 @@ export default function PrenotaEventiPage() {
                         </button>
                         <button
                           onClick={() => prenota(ev, "in_sede")}
-                          disabled={!!busy || !puoInSede}
+                          disabled={!!busy || !!miei?.solo_online}
                           className={btnSecondario}
                         >
                           {busy === `${ev.id}-in_sede` ? "Attendi…" : "Pago in sede"}
                         </button>
                       </div>
-                      {!puoInSede && (
-                        <p className="text-xs text-gray-500">
-                          {miei?.solo_online
-                            ? "Pagamento in sede non disponibile per le assenze registrate."
-                            : "Il pagamento in sede è riservato ai soci con tessera attiva."}
-                        </p>
+                      {miei?.solo_online && (
+                        <p className="text-xs text-gray-500">Pagamento in sede non disponibile per le assenze registrate.</p>
                       )}
                     </div>
                   )}

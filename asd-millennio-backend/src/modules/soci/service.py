@@ -26,6 +26,7 @@ SPORT_PREFISSI = {
     "kung_fu": "KFU",
     "pickleball": "PCK",
     "sostenitore": "SOS",
+    "community": "COM",
 }
 
 

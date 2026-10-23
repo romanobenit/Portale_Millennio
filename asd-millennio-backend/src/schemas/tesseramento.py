@@ -52,7 +52,7 @@ class TesseramentoRequest(BaseModel):
     @field_validator("categoria")
     @classmethod
     def cat_valida(cls, v: str) -> str:
-        validi = {"volley", "badminton", "kung_fu", "pickleball", "sostenitore"}
+        validi = {"volley", "badminton", "kung_fu", "pickleball", "sostenitore", "community"}
         if v not in validi:
             raise ValueError(f"Categoria non valida: {v}")
         return v
@@ -63,6 +63,20 @@ class TesseramentoCheckoutResponse(BaseModel):
     pagamento_id: UUID
     stripe_checkout_url: str
     importo_eur: float
+
+
+class TesseraEsternaCreate(BaseModel):
+    ente: str = Field(..., min_length=2, max_length=120)
+    asd_nome: str = Field(..., min_length=2, max_length=160)
+    asd_codice: str | None = Field(None, max_length=40)
+    numero_tessera: str = Field(..., min_length=1, max_length=60)
+    disciplina: str = Field(..., min_length=2, max_length=60)
+    data_scadenza: date
+
+    @field_validator("ente", "asd_nome", "numero_tessera", "disciplina", "asd_codice")
+    @classmethod
+    def ripulisci(cls, v: str | None) -> str | None:
+        return v.strip() if v else v
 
 
 class AnagraficaInSede(BaseModel):
@@ -131,7 +145,27 @@ class SocioBreve(BaseModel):
     is_minor: bool
 
 
+class TesseraEsternaResponse(BaseModel):
+    id: UUID
+    socio_id: UUID
+    ente: str
+    asd_nome: str
+    asd_codice: str | None
+    numero_tessera: str
+    disciplina: str
+    data_scadenza: date
+    documento_id: UUID | None
+    verifica_stato: str
+    verifica_scadenza: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TesseramentoDaVerificare(BaseModel):
+    # "tesseramento" = nuova tessera (anche community); "rinnovo_tessera_esterna" =
+    # tessera esterna aggiornata da un iscritto community già confermato.
+    tipo: str = "tesseramento"
     tessera_id: UUID
     numero_tessera: str
     categoria: str
@@ -141,6 +175,7 @@ class TesseramentoDaVerificare(BaseModel):
     socio: SocioBreve
     tutore: SocioBreve | None
     documenti: list[DocumentoBreve]
+    tessera_esterna: TesseraEsternaResponse | None = None
 
 
 class TesseratoResponse(BaseModel):
@@ -154,6 +189,7 @@ class TesseratoResponse(BaseModel):
     verifica_stato: str | None
     certificato_medico_tipo: str | None
     certificato_medico_scadenza: date | None
+    tessera_esterna_scadenza: date | None = None
     socio: SocioBreve
     tutore: SocioBreve | None
 
@@ -176,7 +212,7 @@ class QuotaCreate(BaseModel):
     @field_validator("categoria")
     @classmethod
     def cat_valida(cls, v: str) -> str:
-        validi = {"volley", "badminton", "kung_fu", "pickleball", "sostenitore"}
+        validi = {"volley", "badminton", "kung_fu", "pickleball", "sostenitore", "community"}
         if v not in validi:
             raise ValueError(f"Categoria non valida: {v}")
         return v

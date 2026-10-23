@@ -12,6 +12,7 @@ import toast from "react-hot-toast";
 const SPORT_LABEL: Record<string, string> = {
   volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball",
   sostenitore: "Socio Sostenitore",
+  community: "Community",
 };
 
 // Variante Badge + etichetta per stato tessera, coerenti con "Le mie tessere".
@@ -96,11 +97,11 @@ export default function ProfiloPage() {
             />
           </div>
 
-          {tessere.length > 0 && (
+          {tessere.some((t) => t.sport !== "community") && (
             <div>
               <p className="text-sm font-medium text-gray-800 mb-2">Certificato medico</p>
               <div className="space-y-3">
-                {tessere.map((t) => (
+                {tessere.filter((t) => t.sport !== "community").map((t) => (
                   <div key={t.id} className="rounded-lg border border-gray-100 p-3">
                     <p className="text-xs text-gray-500 mb-1">
                       {SPORT_LABEL[t.sport] ?? t.sport}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   fetchVerifiche, confermaVerifica, rifiutaVerifica, scaricaDocumento,
-  fetchTesserati,
+  fetchTesserati, esitoTesseraEsterna,
   TesseramentoDaVerificare, Tesserato,
 } from "@/lib/api/tesseramento";
 import { TesseramentoInSede } from "@/components/soci/TesseramentoInSede";
@@ -11,7 +11,19 @@ import toast from "react-hot-toast";
 
 const CAT_LABEL: Record<string, string> = {
   volley: "Pallavolo", badminton: "Badminton", kung_fu: "Kung Fu", pickleball: "Pickleball", sostenitore: "Sostenitore",
+  community: "Community",
 };
+
+const DOC_LABEL: Record<string, string> = {
+  identita: "Documento identità",
+  tutela: "Prova tutela",
+  certificato_medico: "Certificato medico",
+  tessera_esterna: "Tessera altra ASD",
+};
+
+function formattaData(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("it-IT");
+}
 
 const STATO_TESSERA_LABEL: Record<string, { label: string; classes: string }> = {
   attiva: { label: "Attiva", classes: "bg-green-100 text-green-800" },
@@ -79,13 +91,19 @@ export default function VerificheTesseramentiPage() {
     return tesserati.filter((t) => statoCertificato(t) === filtroCertificato);
   }, [tesserati, filtroCertificato]);
 
-  const azione = async (id: string, tipo: "conferma" | "rifiuta") => {
-    if (tipo === "rifiuta" && !confirm("Rifiutare il tesseramento? La quota diventerà erogazione liberale (non rimborsata).")) return;
+  const azione = async (it: TesseramentoDaVerificare, tipo: "conferma" | "rifiuta") => {
+    const rinnovo = it.tipo === "rinnovo_tessera_esterna";
+    const avviso = rinnovo
+      ? "Rifiutare la tessera esterna? La persona non potrà prenotare gli eventi finché non ne carica una valida."
+      : "Rifiutare il tesseramento? La quota diventerà erogazione liberale (non rimborsata).";
+    if (tipo === "rifiuta" && !confirm(avviso)) return;
+    const id = rinnovo ? it.tessera_esterna!.id : it.tessera_id;
     setBusy(id);
     try {
-      if (tipo === "conferma") await confermaVerifica(id);
+      if (rinnovo) await esitoTesseraEsterna(id, tipo);
+      else if (tipo === "conferma") await confermaVerifica(id);
       else await rifiutaVerifica(id);
-      toast.success(tipo === "conferma" ? "Tesseramento confermato." : "Tesseramento rifiutato.");
+      toast.success(tipo === "conferma" ? "Confermato." : "Rifiutato.");
       await carica();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
@@ -122,28 +140,47 @@ export default function VerificheTesseramentiPage() {
         <p className="text-gray-500 text-sm">Nessun tesseramento in attesa di verifica.</p>
       ) : (
         <div className="space-y-4">
-          {items.map((it) => (
-            <div key={it.tessera_id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          {items.map((it) => {
+            const idAzione = it.tipo === "rinnovo_tessera_esterna" ? it.tessera_esterna!.id : it.tessera_id;
+            return (
+            <div key={`${it.tipo}-${idAzione}`} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-mono text-sm font-semibold text-gray-800">{it.numero_tessera}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{CAT_LABEL[it.categoria] ?? it.categoria}</span>
                     {it.socio.is_minor && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Minore</span>}
+                    {it.tipo === "rinnovo_tessera_esterna" && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Tessera esterna aggiornata</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-900 font-medium">{it.socio.nome} {it.socio.cognome}</p>
                   <p className="text-xs text-gray-500 font-mono">CF {it.socio.codice_fiscale}</p>
                   {it.tutore && <p className="text-xs text-gray-500">Tutore: {it.tutore.nome} {it.tutore.cognome}</p>}
                   {it.importo_eur != null && <p className="text-xs text-gray-500 mt-1">Quota versata: € {it.importo_eur.toFixed(2)}</p>}
+                  {it.tessera_esterna && (
+                    <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                      <p className="font-medium text-gray-900">Tessera di un&apos;altra ASD</p>
+                      <p>{it.tessera_esterna.ente}</p>
+                      <p>
+                        {it.tessera_esterna.asd_nome}
+                        {it.tessera_esterna.asd_codice && ` (cod. ${it.tessera_esterna.asd_codice})`}
+                      </p>
+                      <p>
+                        N. {it.tessera_esterna.numero_tessera} · {it.tessera_esterna.disciplina} · scade il{" "}
+                        {formattaData(it.tessera_esterna.data_scadenza)}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   {it.verifica_scadenza && (
                     <p className="text-xs text-gray-400 mb-2">Scade il {new Date(it.verifica_scadenza).toLocaleDateString("it-IT")}</p>
                   )}
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => azione(it.tessera_id, "rifiuta")} disabled={busy === it.tessera_id}
+                    <button onClick={() => azione(it, "rifiuta")} disabled={busy === idAzione}
                       className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Rifiuta</button>
-                    <button onClick={() => azione(it.tessera_id, "conferma")} disabled={busy === it.tessera_id}
+                    <button onClick={() => azione(it, "conferma")} disabled={busy === idAzione}
                       className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Conferma</button>
                   </div>
                 </div>
@@ -154,12 +191,13 @@ export default function VerificheTesseramentiPage() {
                   <button key={d.id} onClick={() => scaricaDocumento(d.id)}
                     className="text-xs text-blue-700 hover:underline inline-flex items-center gap-1">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                    {d.tipo === "identita" ? "Documento identità" : "Prova tutela"}
+                    {DOC_LABEL[d.tipo] ?? d.tipo}
                   </button>
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -260,7 +298,13 @@ export default function VerificheTesseramentiPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{CAT_LABEL[t.categoria] ?? t.categoria}</td>
                       <td className="px-4 py-3 text-gray-600">{t.anno_sportivo ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-600">{t.data_scadenza ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {t.categoria === "community"
+                          ? t.tessera_esterna_scadenza
+                            ? `campi fino al ${formattaData(t.tessera_esterna_scadenza)}`
+                            : "—"
+                          : t.data_scadenza ?? "—"}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badge.classes}`}>
                           {badge.label}
