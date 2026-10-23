@@ -38,7 +38,7 @@ def _require_dirigenza(user: dict = Depends(get_current_user)) -> dict:
 async def dashboard_fundraising(
     request: Request,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await DirigenzaService(db).dashboard_fundraising()
 
@@ -50,7 +50,7 @@ async def dashboard_fundraising(
 async def lista_pricing_rules(
     request: Request,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await DirigenzaService(db).lista_pricing_rules()
 
@@ -61,7 +61,7 @@ async def crea_pricing_rule(
     request: Request,
     data: PricingRuleCreate,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     async with db.begin():
         rule = await DirigenzaService(db).crea_pricing_rule(data)
@@ -75,7 +75,7 @@ async def aggiorna_pricing_rule(
     rule_id: uuid.UUID,
     data: PricingRuleUpdate,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     async with db.begin():
         rule = await DirigenzaService(db).aggiorna_pricing_rule(rule_id, data)
@@ -88,7 +88,7 @@ async def disattiva_pricing_rule(
     request: Request,
     rule_id: uuid.UUID,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     async with db.begin():
         rule = await DirigenzaService(db).disattiva_pricing_rule(rule_id)
@@ -103,7 +103,7 @@ async def simula_prezzo(
     request: Request,
     data: SimulazioneRequest,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await DirigenzaService(db).simula_prezzo(data)
 
@@ -116,7 +116,7 @@ async def rendiconto(
     request: Request,
     anno: int = Query(2026, ge=2020, le=2050),
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await DirigenzaService(db).rendiconto_annuale(anno)
 
@@ -129,7 +129,7 @@ async def lista_quote(
     request: Request,
     anno_sportivo: str | None = Query(None),
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await TesseramentoService(db).lista_quote(anno_sportivo)
 
@@ -140,7 +140,7 @@ async def crea_quota(
     request: Request,
     data: QuotaCreate,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await TesseramentoService(db).crea_quota(data)
 
@@ -152,6 +152,6 @@ async def aggiorna_quota(
     quota_id: uuid.UUID,
     data: QuotaUpdate,
     _user: dict = Depends(_require_dirigenza),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await TesseramentoService(db).aggiorna_quota(quota_id, data)

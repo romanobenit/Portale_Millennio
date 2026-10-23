@@ -25,7 +25,7 @@ async def avvia_acquisto_nft(
     request: Request,
     data: AcquistoNFTRequest,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     from modules.soci.repository import SociRepository
     from fastapi import HTTPException, status as http_status
@@ -42,7 +42,7 @@ async def avvia_acquisto_nft(
 async def le_mie_nft(
     request: Request,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Elenco degli NFT del socio autenticato (pagina 'I miei NFT')."""
     from modules.soci.repository import SociRepository
@@ -59,7 +59,7 @@ async def scarica_certificato(
     request: Request,
     acquisto_id: UUID,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """PDF del certificato di sostegno — solo il proprietario dell'acquisto o lo staff."""
     from modules.soci.repository import SociRepository
@@ -86,7 +86,7 @@ async def verifica_accesso_nft(
     token_id: int = Query(...),
     slot_key: str = Query(...),
     user: dict = RequireStaff,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Verifica accesso al Palasirio tramite QR code — solo staff."""
     from modules.soci.repository import SociRepository
@@ -101,7 +101,7 @@ async def verifica_accesso_nft(
 async def dashboard_fundraising(
     request: Request,
     _user=RequireDirigenza,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Mantiene la compatibilità — usa /api/v1/dirigenza/fundraising per la dashboard completa."""
     return await NFTService(db).dashboard_fundraising()

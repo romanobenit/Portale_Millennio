@@ -23,7 +23,7 @@ router = APIRouter(prefix="/campi", tags=["M02 — Campi"])
 
 
 @router.get("/config", response_model=CampiConfigResponse)
-async def config_campi(db: AsyncSession = Depends(get_db)):
+async def config_campi(db: AsyncSession = Depends(get_db, scope="function")):
     """Configurazione pubblica (orizzonte_giorni) usata dalla pagina prenotazioni."""
     return await CampiService(db).get_config()
 
@@ -40,7 +40,7 @@ async def _get_socio_id(user: dict, db: AsyncSession) -> UUID:
 async def disponibilita_campi(
     data_inizio: date = Query(...),
     data_fine: date = Query(...),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Slot da 1 ora prenotabili nell'intervallo, con i campi liberi per ogni ora."""
     return await CampiService(db).lista_disponibilita(data_inizio, data_fine)
@@ -51,7 +51,7 @@ async def disponibilita_campi(
 @router.post("/carrello", response_model=PrenotazioneCampoResponse)
 async def aggiungi_al_carrello(
     body: PrenotazioneCampoCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     user: dict = Depends(get_current_user),
 ):
     """Blocca un'ora (30 min) e la aggiunge al carrello — nessun pagamento ancora."""
@@ -66,7 +66,7 @@ async def aggiungi_al_carrello(
 
 @router.get("/carrello", response_model=List[PrenotazioneCampoResponse])
 async def lista_carrello(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     user: dict = Depends(get_current_user),
 ):
     """Ore bloccate non ancora pagate (carrello). I lock scaduti vengono rilasciati."""
@@ -76,7 +76,7 @@ async def lista_carrello(
 
 @router.post("/carrello/checkout", response_model=CheckoutCarrelloResponse)
 async def checkout_carrello(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     user: dict = Depends(get_current_user),
 ):
     """Crea un unico Stripe Checkout per tutte le ore nel carrello."""
@@ -88,7 +88,7 @@ async def checkout_carrello(
 
 @router.get("/le-mie-prenotazioni", response_model=List[PrenotazioneCampoResponse])
 async def le_mie_prenotazioni(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     user: dict = Depends(get_current_user),
 ):
     socio_id = await _get_socio_id(user, db)
@@ -98,7 +98,7 @@ async def le_mie_prenotazioni(
 @router.delete("/prenota/{prenotazione_id}", response_model=CancellazioneCampoResponse)
 async def cancella_prenotazione(
     prenotazione_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     user: dict = Depends(get_current_user),
 ):
     """Rimuove un'ora dal carrello (se bloccata) o cancella una prenotazione confermata."""

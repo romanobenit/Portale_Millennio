@@ -25,7 +25,7 @@ router = APIRouter(prefix="/tessere", tags=["M01 — Tessere (pubblico)"])
 async def verifica_tessera_pubblica(
     request: Request,
     tessera_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """
     Endpoint pubblico — puntato dal QR code sulla tessera digitale.
@@ -39,7 +39,7 @@ async def verifica_tessera_pubblica(
 async def download_tessera_pdf(
     request: Request,
     tessera_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """
     Genera e restituisce il PDF della tessera con QR code.

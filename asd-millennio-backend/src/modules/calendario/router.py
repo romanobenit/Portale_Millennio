@@ -22,7 +22,7 @@ async def lista_slot(
     fascia: str | None = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await CalendarioService(db).lista_slot(data_inizio, data_fine, fascia, page, limit)
 
@@ -33,7 +33,7 @@ async def disponibilita(
     request: Request,
     data_inizio: date = Query(default_factory=date.today),
     data_fine: date = Query(default_factory=lambda: date.today() + timedelta(days=90)),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Ore libere con prezzo dinamico per ogni fascia. Chiamata ad ogni apertura del calendario."""
     return await CalendarioService(db).disponibilita(data_inizio, data_fine)
@@ -45,7 +45,7 @@ async def lock_selezione(
     request: Request,
     payload: LockRequest,
     _user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """
     Blocca le ore selezionate per 30 minuti e restituisce il prezzo dinamico.
@@ -63,7 +63,7 @@ async def riepilogo_selezione(
     slot_id: list[UUID] = Query(...),
     ore: list[int] = Query(...),
     _user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Calcolo prezzo senza lock (anteprima). Usa lock per il flusso reale di acquisto."""
     from schemas.calendario import OreSelezione
@@ -82,7 +82,7 @@ async def riepilogo_selezione(
 async def get_slot(
     request: Request,
     slot_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     slot = await CalendarioService(db).get_slot(slot_id)
     return SlotResponse.model_validate(slot)

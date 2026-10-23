@@ -25,7 +25,7 @@ router = APIRouter(prefix="/dirigenza/campi", tags=["Dirigenza — Campi"])
 
 @router.get("/config", response_model=CampiConfigResponse)
 async def leggi_config(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     return await CampiService(db).get_config()
@@ -34,7 +34,7 @@ async def leggi_config(
 @router.put("/config", response_model=CampiConfigResponse)
 async def aggiorna_config(
     body: CampiConfigUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     return await CampiService(db).aggiorna_config(body.orizzonte_giorni)
@@ -45,7 +45,7 @@ async def lista_prenotazioni(
     data_inizio: date = Query(default_factory=date.today),
     data_fine: date = Query(default_factory=lambda: date.today() + timedelta(days=30)),
     stato: str | None = Query(default=None, description="Filtra per stato; default: tutte tranne 'bloccata'"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     """Prenotazioni campo nel periodo, con socio e sport — per uso quotidiano ("chi viene")."""
@@ -56,7 +56,7 @@ async def lista_prenotazioni(
 async def riepilogo(
     data_inizio: date = Query(default_factory=date.today),
     data_fine: date = Query(default_factory=lambda: date.today() + timedelta(days=30)),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     """Incassato + occupazione dei campi nel periodo."""
@@ -65,7 +65,7 @@ async def riepilogo(
 
 @router.get("/templates", response_model=List[SlotTemplateCampoResponse])
 async def lista_templates(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     r = await db.execute(select(SlotTemplateCampo).order_by(SlotTemplateCampo.giorno_settimana))
@@ -75,7 +75,7 @@ async def lista_templates(
 @router.post("/templates", response_model=SlotTemplateCampoResponse, status_code=status.HTTP_201_CREATED)
 async def crea_template(
     body: SlotTemplateCampoCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     if body.ora_fine <= body.ora_inizio:
@@ -94,7 +94,7 @@ async def crea_template(
 async def aggiorna_template(
     template_id: UUID,
     body: SlotTemplateCampoUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     r = await db.execute(select(SlotTemplateCampo).where(SlotTemplateCampo.id == template_id))
@@ -113,7 +113,7 @@ async def aggiorna_template(
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def disattiva_template(
     template_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     _=RequireDirigenza,
 ):
     r = await db.execute(select(SlotTemplateCampo).where(SlotTemplateCampo.id == template_id))
