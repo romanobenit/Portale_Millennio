@@ -1,355 +1,280 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  fetchDisponibilita,
-  fetchCampiConfig,
-  fetchCarrello,
-  aggiungiAlCarrello,
-  checkoutCarrello,
-  fetchMiePrenotazioni,
-  cancellaPrenotazione,
-  GiornoDisponibile,
-  PrenotazioneCampo,
-} from "@/lib/api/campi";
-import { format, addDays } from "date-fns";
 import toast from "react-hot-toast";
+import { clsx } from "clsx";
+import { ContatorePresenze } from "@/components/eventi/ContatorePresenze";
+import {
+  annullaPrenotazioneEvento,
+  esciListaAttesa,
+  etichettaSport,
+  fetchMieiEventi,
+  fetchProssimiEventi,
+  formattaDataEvento,
+  formattaOra,
+  formattaPrezzo,
+  iscriviListaAttesa,
+  prenotaEvento,
+  type EventoPubblico,
+  type MiaPrenotazione,
+  type MieiEventi,
+  type Modalita,
+} from "@/lib/api/eventi";
 
-export default function PrenotazioniPage() {
+const btnPrimario =
+  "rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 transition-colors";
+const btnSecondario =
+  "rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 transition-colors";
+
+function statoPrenotazione(p: MiaPrenotazione): { label: string; classes: string } {
+  if (p.stato === "in_attesa_pagamento") return { label: "Pagamento da completare", classes: "bg-yellow-100 text-yellow-800" };
+  if (p.modalita === "in_sede") {
+    return p.pagato_in_sede
+      ? { label: "Pagata in sede", classes: "bg-green-100 text-green-800" }
+      : { label: "Da pagare in sede", classes: "bg-blue-100 text-blue-800" };
+  }
+  return { label: "Pagata online", classes: "bg-green-100 text-green-800" };
+}
+
+export default function PrenotaEventiPage() {
   const searchParams = useSearchParams();
   const paymentStatus = searchParams.get("status");
 
-  const [disponibilita, setDisponibilita] = useState<GiornoDisponibile[]>([]);
-  const [carrello, setCarrello] = useState<PrenotazioneCampo[]>([]);
-  const [prenotazioni, setPrenotazioni] = useState<PrenotazioneCampo[]>([]);
+  const [eventi, setEventi] = useState<EventoPubblico[]>([]);
+  const [miei, setMiei] = useState<MieiEventi | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [pagamento, setPagamento] = useState(false);
-  // Fallback finché non arriva la configurazione dal backend (dirigenza →
-  // Gestione Campi): preserva il comportamento storico di 60 giorni.
-  const [orizzonteGiorni, setOrizzonteGiorni] = useState(60);
 
-  const oggi = format(new Date(), "yyyy-MM-dd");
-  const dataFine = format(addDays(new Date(), orizzonteGiorni), "yyyy-MM-dd");
-
-  // Caricamento completo (mount + ritorno dal pagamento): è la fonte autorevole
-  // iniziale del carrello. La config va letta per prima: fissa l'orizzonte
-  // usato dalla chiamata disponibilità che segue nello stesso giro.
-  const caricaDati = async () => {
+  const carica = useCallback(async () => {
     try {
-      const config = await fetchCampiConfig().catch(() => ({ orizzonte_giorni: orizzonteGiorni }));
-      setOrizzonteGiorni(config.orizzonte_giorni);
-      const dataFineAggiornata = format(addDays(new Date(), config.orizzonte_giorni), "yyyy-MM-dd");
-      const [disp, cart, mie] = await Promise.all([
-        fetchDisponibilita(oggi, dataFineAggiornata),
-        fetchCarrello().catch(() => [] as PrenotazioneCampo[]),
-        fetchMiePrenotazioni().catch(() => [] as PrenotazioneCampo[]),
-      ]);
-      setDisponibilita(disp);
-      setCarrello(cart);
-      setPrenotazioni(mie);
-      setError(null);
+      const [ev, mie] = await Promise.all([fetchProssimiEventi(), fetchMieiEventi()]);
+      setEventi(ev);
+      setMiei(mie);
+      setErrore(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Errore di rete");
+      setErrore(e instanceof Error ? e.message : "Errore di rete");
     } finally {
       setLoading(false);
     }
-  };
-
-  // Riconciliazione in background dopo aggiungi/rimuovi: aggiorna SOLO la
-  // disponibilità (conteggio campi liberi) e le prenotazioni confermate.
-  // NON tocca il carrello: quello è gestito in modo ottimistico dalle azioni
-  // utente, così due refetch in corsa non possono sovrascriverlo con una
-  // fotografia stale del server (race che faceva "sparire" le prenotazioni).
-  const ricaricaDisponibilita = async () => {
-    try {
-      const [disp, mie] = await Promise.all([
-        fetchDisponibilita(oggi, dataFine),
-        fetchMiePrenotazioni().catch(() => [] as PrenotazioneCampo[]),
-      ]);
-      setDisponibilita(disp);
-      setPrenotazioni(mie);
-    } catch {
-      /* i conteggi si aggiorneranno al prossimo caricamento completo */
-    }
-  };
+  }, []);
 
   useEffect(() => {
-    caricaDati();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    carica();
+  }, [carica]);
 
-  const giorni = useMemo(() => {
-    const m = new Map<string, GiornoDisponibile[]>();
-    for (const s of disponibilita) {
-      const arr = m.get(s.data) ?? [];
-      arr.push(s);
-      m.set(s.data, arr);
-    }
-    for (const arr of m.values()) arr.sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
-    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [disponibilita]);
-
-  // Quante ore ho nel carrello per ciascuno slot (data + ora), per mostrarlo nella griglia.
-  const carrelloPerSlot = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const c of carrello) {
-      const k = c.data + c.ora_inizio.slice(0, 5);
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [carrello]);
-
-  const totaleCarrello = useMemo(
-    () => carrello.reduce((s, c) => s + Number(c.importo_eur), 0),
-    [carrello],
-  );
-
-  const aggiungi = async (s: GiornoDisponibile) => {
-    setBusy(s.template_id + s.data + s.ora_inizio);
+  const esegui = async (chiave: string, azione: () => Promise<void>) => {
+    setBusy(chiave);
     try {
-      const creata = await aggiungiAlCarrello(s.template_id, s.data, s.ora_inizio);
-      // Feedback immediato: aggiorna subito il carrello (badge sullo slot + riga)
-      // e mostra un toast, senza attendere il refetch completo della disponibilità
-      // (loop server-side su 60 giorni → lento). I conteggi si riconciliano dopo.
-      setCarrello((prev) => [...prev, creata]);
-      toast.success(`Aggiunta al carrello · ${formattaOra(creata.ora_inizio)}`);
-      ricaricaDisponibilita();
+      await azione();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore nell'aggiunta");
+      toast.error(e instanceof Error ? e.message : "Operazione non riuscita");
     } finally {
       setBusy(null);
+      await carica();
     }
   };
 
-  const rimuovi = async (id: string) => {
-    const backup = carrello;
-    // Rimozione ottimistica: la riga sparisce subito dal carrello.
-    setCarrello((prev) => prev.filter((c) => c.id !== id));
-    try {
-      await cancellaPrenotazione(id);
-      toast.success("Rimossa dal carrello");
-      ricaricaDisponibilita();
-    } catch (e: unknown) {
-      setCarrello(backup); // ripristina in caso di errore
-      toast.error(e instanceof Error ? e.message : "Errore nella rimozione");
-    }
-  };
-
-  const paga = async () => {
-    setPagamento(true);
-    try {
-      const res = await checkoutCarrello();
-      window.location.href = res.stripe_checkout_url;
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Errore nel pagamento");
-      setPagamento(false);
-    }
-  };
-
-  const cancellaConfermata = async (id: string) => {
-    if (!confirm("Sei sicuro di voler cancellare questa prenotazione confermata?")) return;
-    try {
-      await cancellaPrenotazione(id);
-      await caricaDati();
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Errore nella cancellazione");
-    }
-  };
-
-  const formattaOra = (t: string) => t.slice(0, 5);
-  const formattaData = (d: string) =>
-    new Date(d + "T12:00:00").toLocaleDateString("it-IT", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+  const prenota = (ev: EventoPubblico, modalita: Modalita) =>
+    esegui(`${ev.id}-${modalita}`, async () => {
+      const res = await prenotaEvento(ev.id, modalita);
+      if (res.stripe_checkout_url) {
+        window.location.href = res.stripe_checkout_url;
+        return;
+      }
+      toast.success(
+        modalita === "in_sede"
+          ? "Prenotato! Pagherai all'ingresso. Se non puoi venire, annulla entro il giorno prima."
+          : "Prenotazione confermata.",
+      );
     });
+
+  const completaPagamento = (p: MiaPrenotazione) =>
+    esegui(`pay-${p.id}`, async () => {
+      const res = await prenotaEvento(p.evento_id, "online");
+      if (res.stripe_checkout_url) window.location.href = res.stripe_checkout_url;
+    });
+
+  const annulla = (p: MiaPrenotazione) => {
+    const msg =
+      p.stato === "confermata" && p.modalita === "online" && Number(p.importo_eur) > 0
+        ? "Annullare la prenotazione? Riceverai il rimborso dell'importo pagato."
+        : "Annullare la prenotazione?";
+    if (!window.confirm(msg)) return;
+    esegui(`del-${p.id}`, async () => {
+      await annullaPrenotazioneEvento(p.id);
+      toast.success("Prenotazione annullata.");
+    });
+  };
+
+  const listaAttesa = (ev: EventoPubblico, entra: boolean) =>
+    esegui(`wait-${ev.id}`, async () => {
+      if (entra) {
+        await iscriviListaAttesa(ev.id);
+        toast.success("Sei in lista d'attesa: ti avvisiamo via email se si libera un posto.");
+      } else {
+        await esciListaAttesa(ev.id);
+      }
+    });
+
+  if (loading) return <p className="text-gray-500">Caricamento eventi…</p>;
+
+  const prenotatoPer = new Map((miei?.prenotazioni ?? []).map((p) => [p.evento_id, p]));
+  const inAttesa = new Set(miei?.lista_attesa ?? []);
+  const puoInSede = !!miei?.tessera_attiva && !miei?.solo_online;
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Prenota un campo</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Aggiungi le ore che vuoi al carrello e paga tutto in un&apos;unica volta alla fine.
+        <h1 className="text-2xl font-bold text-gray-900">Prenota un evento</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          L&apos;ingresso vale per tutta la durata dell&apos;evento: arriva quando vuoi e gioca quanto vuoi.
         </p>
       </div>
 
       {paymentStatus === "success" && (
-        <div className="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800 text-sm">
-          Pagamento completato. Le tue prenotazioni sono state confermate.
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Pagamento completato: la prenotazione è confermata (se non la vedi ancora, aggiorna tra qualche secondo).
         </div>
       )}
       {paymentStatus === "cancel" && (
-        <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-yellow-800 text-sm">
-          Pagamento annullato. Le ore restano nel carrello finché non scade il blocco.
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+          Pagamento annullato: il posto resta riservato per qualche minuto, poi torna libero.
+        </div>
+      )}
+      {errore && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{errore}</div>}
+
+      {miei?.solo_online && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Hai {miei.assenze} assenze su prenotazioni da pagare in sede: per ora puoi prenotare solo pagando online.
+          Per lo sblocco rivolgiti alla dirigenza.
         </div>
       )}
 
-      {/* ── Carrello ─────────────────────────────────────────────────────── */}
-      {carrello.length > 0 && (
-        <section className="rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Carrello · {carrello.length} {carrello.length === 1 ? "ora" : "ore"}
-            </h2>
-            <span className="text-xs text-orange-600">
-              Bloccate per 30 min: se non paghi vengono rilasciate
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {carrello.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white px-3 sm:px-4 py-2.5"
-              >
-                <div className="text-sm min-w-0">
-                  <span className="font-medium text-gray-900 capitalize">{formattaData(c.data)}</span>
-                  <span className="text-gray-600">
-                    {" · "}{formattaOra(c.ora_inizio)}–{formattaOra(c.ora_fine)} · Campo {c.campo}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="text-sm font-semibold text-gray-800">€{c.importo_eur}</span>
-                  <button
-                    onClick={() => rimuovi(c.id)}
-                    className="text-xs text-red-600 hover:text-red-800"
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-gray-700">
-              Totale: <span className="text-lg font-bold text-gray-900">€{totaleCarrello.toFixed(2)}</span>
-            </div>
-            <button
-              onClick={paga}
-              disabled={pagamento}
-              className="w-full sm:w-auto rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
-            >
-              {pagamento ? "Reindirizzamento…" : `Paga tutto — €${totaleCarrello.toFixed(2)}`}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* ── Prenotazioni confermate ──────────────────────────────────────── */}
-      {prenotazioni.length > 0 && (
+      {miei && miei.prenotazioni.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Le mie prenotazioni confermate</h2>
+          <h2 className="mb-3 text-lg font-semibold text-gray-800">Le mie prenotazioni</h2>
           <div className="space-y-2">
-            {prenotazioni.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 sm:px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium text-gray-900 text-sm capitalize">
-                    {formattaData(p.data)} · {formattaOra(p.ora_inizio)}–{formattaOra(p.ora_fine)} · Campo {p.campo}
-                  </p>
-                  <p className="text-xs text-green-700 font-medium">Confermata · €{p.importo_eur}</p>
-                </div>
-                <button
-                  onClick={() => cancellaConfermata(p.id)}
-                  className="text-xs text-red-600 hover:text-red-800"
+            {miei.prenotazioni.map((p) => {
+              const badge = statoPrenotazione(p);
+              return (
+                <div
+                  key={p.id}
+                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  Cancella
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0">
+                    <p className="font-medium capitalize text-gray-900">{formattaDataEvento(p.evento.data)}</p>
+                    <p className="text-sm text-gray-600">
+                      {formattaOra(p.evento.ora_inizio)}–{formattaOra(p.evento.ora_fine)} · {etichettaSport(p.evento.sport)} ·{" "}
+                      {formattaPrezzo(p.importo_eur)}
+                    </p>
+                    <span className={clsx("mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium", badge.classes)}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {p.stato === "in_attesa_pagamento" && (
+                      <button onClick={() => completaPagamento(p)} disabled={!!busy} className={btnPrimario}>
+                        {busy === `pay-${p.id}` ? "Attendi…" : "Completa il pagamento"}
+                      </button>
+                    )}
+                    {p.annullabile ? (
+                      <button
+                        onClick={() => annulla(p)}
+                        disabled={!!busy}
+                        className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        {busy === `del-${p.id}` ? "Annullamento…" : "Annulla"}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-400">Non più annullabile</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Si può annullare fino al giorno prima dell&apos;evento; chi ha pagato online riceve il rimborso.
+          </p>
         </section>
       )}
 
-      {/* ── Disponibilità per ora ────────────────────────────────────────── */}
       <section>
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
-          <h2 className="text-lg font-semibold text-gray-800">Disponibilità prossimi {orizzonteGiorni} giorni</h2>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-blue-100 border border-blue-300" /> libero
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-emerald-500" /> nel carrello
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-gray-100 border border-gray-200" /> esaurito
-            </span>
-          </div>
-        </div>
-
-        {loading && (
-          <div className="flex items-center gap-2 text-gray-500 text-sm py-8">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-            Caricamento disponibilità…
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-800 text-sm">{error}</div>
-        )}
-
-        {!loading && !error && giorni.length === 0 && (
-          <p className="text-gray-500 text-sm">Nessuna fascia prenotabile nei prossimi {orizzonteGiorni} giorni.</p>
-        )}
-
-        {!loading && !error && giorni.length > 0 && (
+        <h2 className="mb-3 text-lg font-semibold text-gray-800">Eventi in programma</h2>
+        {eventi.length === 0 ? (
+          <p className="text-sm text-gray-500">Nessun evento in programma al momento.</p>
+        ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {giorni.map(([data, slots]) => (
-              <div key={data} className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 mb-3">
-                  <h3 className="font-semibold text-gray-900 text-sm capitalize">{formattaData(data)}</h3>
-                  <span className="text-xs text-gray-500">
-                    {slots[0].sport.join(" / ")} · €{slots[0].costo_ora}/ora
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {slots.map((s) => {
-                    const nelCarrello = carrelloPerSlot.get(s.data + formattaOra(s.ora_inizio)) ?? 0;
-                    const free = s.campi_disponibili > 0;
-                    const adding = busy === s.template_id + s.data + s.ora_inizio;
-                    return (
-                      <button
-                        key={s.ora_inizio}
-                        disabled={!free || !!busy}
-                        onClick={() => aggiungi(s)}
-                        title={
-                          free
-                            ? `${s.campi_disponibili}/${s.campi_totali} campi liberi · €${s.importo_totale} — clicca per aggiungere`
-                            : "Esaurito"
-                        }
-                        className={`relative flex flex-col items-center rounded-lg border px-3 py-1.5 min-w-[64px] transition
-                          ${
-                            nelCarrello > 0
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                              : free
-                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-300"
-                                : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
-                          }
-                          ${busy && !adding ? "opacity-50" : ""}`}
-                      >
-                        {nelCarrello > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white">
-                            {nelCarrello}
-                          </span>
-                        )}
-                        <span className="font-semibold text-sm tabular-nums">
-                          {adding ? "…" : formattaOra(s.ora_inizio)}
-                        </span>
-                        <span className="text-[10px] leading-tight">
-                          {free ? `${s.campi_disponibili} liberi` : "pieno"}
-                        </span>
+            {eventi.map((ev) => {
+              const mia = prenotatoPer.get(ev.id);
+              return (
+                <div key={ev.id} className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold capitalize text-gray-900">{formattaDataEvento(ev.data)}</p>
+                      <p className="text-sm text-gray-600">
+                        {formattaOra(ev.ora_inizio)}–{formattaOra(ev.ora_fine)} · {etichettaSport(ev.sport)}
+                      </p>
+                      {ev.titolo && <p className="text-sm text-gray-500">{ev.titolo}</p>}
+                      <p className="mt-1 text-sm font-semibold text-gray-800">Ingresso {formattaPrezzo(ev.prezzo_eur)}</p>
+                    </div>
+                    <ContatorePresenze
+                      partecipanti={ev.partecipanti}
+                      postiMax={ev.posti_max}
+                      inListaAttesa={ev.in_lista_attesa}
+                      completo={ev.completo}
+                    />
+                  </div>
+
+                  {mia ? (
+                    mia.stato === "confermata" ? (
+                      <p className="text-sm font-medium text-green-700">Sei prenotato per questo evento.</p>
+                    ) : (
+                      <p className="text-sm font-medium text-yellow-700">
+                        Pagamento da completare: trovi il pulsante in «Le mie prenotazioni».
+                      </p>
+                    )
+                  ) : ev.completo ? (
+                    inAttesa.has(ev.id) ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-medium text-amber-700">Sei in lista d&apos;attesa</span>
+                        <button onClick={() => listaAttesa(ev, false)} disabled={!!busy} className={btnSecondario}>
+                          Esci dalla lista
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => listaAttesa(ev, true)} disabled={!!busy} className={btnSecondario}>
+                        {busy === `wait-${ev.id}` ? "Attendi…" : "Mettiti in lista d'attesa"}
                       </button>
-                    );
-                  })}
+                    )
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <button onClick={() => prenota(ev, "online")} disabled={!!busy} className={btnPrimario}>
+                          {busy === `${ev.id}-online` ? "Attendi…" : `Paga online · ${formattaPrezzo(ev.prezzo_eur)}`}
+                        </button>
+                        <button
+                          onClick={() => prenota(ev, "in_sede")}
+                          disabled={!!busy || !puoInSede}
+                          className={btnSecondario}
+                        >
+                          {busy === `${ev.id}-in_sede` ? "Attendi…" : "Pago in sede"}
+                        </button>
+                      </div>
+                      {!puoInSede && (
+                        <p className="text-xs text-gray-500">
+                          {miei?.solo_online
+                            ? "Pagamento in sede non disponibile per le assenze registrate."
+                            : "Il pagamento in sede è riservato ai soci con tessera attiva."}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

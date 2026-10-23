@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class SocioOnboarding(BaseModel):
@@ -63,6 +63,56 @@ class TesseramentoCheckoutResponse(BaseModel):
     pagamento_id: UUID
     stripe_checkout_url: str
     importo_eur: float
+
+
+class AnagraficaInSede(BaseModel):
+    nome: str = Field(..., min_length=1, max_length=80)
+    cognome: str = Field(..., min_length=1, max_length=80)
+    data_nascita: date
+    codice_fiscale: str
+    email: EmailStr
+    telefono: str | None = None
+    indirizzo: str | None = None
+
+    @field_validator("codice_fiscale")
+    @classmethod
+    def cf_up(cls, v: str) -> str:
+        return v.upper().strip()
+
+
+class TesseramentoInSedeRequest(BaseModel):
+    """
+    Tesseramento fatto dalla dirigenza in sede (POST /soci/tesseramento-in-sede):
+    quota pagata in sede, documento visto di persona → tessera attiva e già verificata.
+    Indicare `socio_id` (socio già registrato) oppure `anagrafica` (nuovo socio).
+    """
+    socio_id: UUID | None = None
+    anagrafica: AnagraficaInSede | None = None
+    categoria: str
+    consensi_firmati: bool
+
+    @field_validator("categoria")
+    @classmethod
+    def cat_valida(cls, v: str) -> str:
+        if v not in {"volley", "badminton", "kung_fu", "pickleball", "sostenitore"}:
+            raise ValueError(f"Categoria non valida: {v}")
+        return v
+
+    @model_validator(mode="after")
+    def socio_o_anagrafica(self):
+        if (self.socio_id is None) == (self.anagrafica is None):
+            raise ValueError("Indica un socio esistente oppure i dati di un nuovo socio")
+        return self
+
+
+class TesseramentoInSedeResponse(BaseModel):
+    socio_id: UUID
+    nome: str
+    cognome: str
+    tessera_id: UUID
+    numero_tessera: str
+    categoria: str
+    data_scadenza: date | None
 
 
 # ── verifica staff ────────────────────────────────────────────────────────────

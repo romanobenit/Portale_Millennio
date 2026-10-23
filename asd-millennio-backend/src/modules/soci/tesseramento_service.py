@@ -655,6 +655,121 @@ class TesseramentoService:
             await self.db.flush()
         return len(tessere)
 
+    # ── tesseramento in sede (dirigenza/staff) ─────────────────────────────────
+
+    async def tesseramento_in_sede(self, data, operatore_kc_sub: str):
+        """
+        Socio esistente o nuovo + tessera ATTIVA in una sola transazione: quota
+        pagata in sede e documento visto di persona, quindi niente verifica a
+        posteriori. Se la persona si registra poi al portale con la stessa email
+        verificata, il profilo viene collegato in automatico (crea_profilo_self).
+        """
+        from schemas.tesseramento import TesseramentoInSedeResponse
+
+        if not data.consensi_firmati:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Servono i consensi privacy e trattamento dati firmati sul modulo cartaceo.",
+            )
+        now = datetime.now(timezone.utc)
+
+        if data.socio_id:
+            socio = await self.repo.get_by_id(data.socio_id)
+            if not socio:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Socio non trovato")
+            if socio.is_minor:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="I minori si tesserano dall'area soci del tutore.",
+                )
+        else:
+            a = data.anagrafica
+            if not cf_valido(a.codice_fiscale):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Codice fiscale non valido (carattere di controllo errato).",
+                )
+            if _eta(a.data_nascita) < 18:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Da qui si tesserano solo maggiorenni: i minori vanno aggiunti dal tutore.",
+                )
+            if await self.repo.get_by_cf(a.codice_fiscale):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail="Codice fiscale già registrato: cerca la persona tra i soci esistenti.",
+                )
+            if await self.repo.get_by_email(a.email):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail="Email già registrata: cerca la persona tra i soci esistenti.",
+                )
+            socio = Socio(
+                nome=a.nome.strip(),
+                cognome=a.cognome.strip(),
+                data_nascita=a.data_nascita,
+                codice_fiscale=a.codice_fiscale,
+                email=a.email,
+                telefono=a.telefono,
+                indirizzo=a.indirizzo,
+                is_minor=False,
+                sport=[],
+            )
+            self.db.add(socio)
+            await self.db.flush()
+
+        anno = settings.anno_sportivo_corrente
+        gia = (await self.db.execute(
+            select(Tessera.id).where(
+                Tessera.socio_id == socio.id,
+                Tessera.sport == data.categoria,
+                Tessera.anno_sportivo == anno,
+                Tessera.stato.in_(["in_attesa_pagamento", "attiva"]),
+            )
+        )).scalars().first()
+        if gia:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"{socio.nome} {socio.cognome} ha già una tessera {data.categoria} per il {anno}.",
+            )
+
+        operatore = await self.repo.get_by_keycloak_id(operatore_kc_sub)
+        tessera = Tessera(
+            socio_id=socio.id,
+            numero_tessera=await _genera_numero_tessera(self.db, data.categoria, anno),
+            sport=data.categoria,
+            stato="attiva",
+            anno_sportivo=anno,
+            data_emissione=date.today(),
+            data_scadenza=_calcola_scadenza_tessera(anno),
+            verifica_stato="confermata",
+            verificata_da=operatore.id if operatore else None,
+            verificata_at=now,
+        )
+        self.db.add(tessera)
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Tesseramento concorrente in corso: riprova.")
+        tessera.pdf_url = f"{settings.app_url}/api/v1/tessere/{tessera.id}/pdf"
+
+        attivi = set((await self.db.execute(
+            select(Consenso.tipo).where(Consenso.socio_id == socio.id, Consenso.revocato_at.is_(None))
+        )).scalars().all())
+        for tipo in ("privacy", "trattamento_dati"):
+            if tipo not in attivi:
+                self.db.add(Consenso(
+                    socio_id=socio.id, tipo=tipo, testo_versione="v1-cartaceo",
+                    firmato_da=socio.id, timestamp_firma=now,
+                ))
+        await self.db.flush()
+        logger.info("Tesseramento in sede: tessera %s emessa da operatore %s", tessera.id, operatore_kc_sub)
+        return TesseramentoInSedeResponse(
+            socio_id=socio.id, nome=socio.nome, cognome=socio.cognome,
+            tessera_id=tessera.id, numero_tessera=tessera.numero_tessera,
+            categoria=tessera.sport, data_scadenza=tessera.data_scadenza,
+        )
+
     # ── quote (dirigenza) ──────────────────────────────────────────────────────
 
     async def lista_quote(self, anno_sportivo: str | None = None) -> list[QuotaTessera]:

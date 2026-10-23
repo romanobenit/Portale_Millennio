@@ -6,6 +6,7 @@ import {
   fetchTesserati,
   TesseramentoDaVerificare, Tesserato,
 } from "@/lib/api/tesseramento";
+import { TesseramentoInSede } from "@/components/soci/TesseramentoInSede";
 import toast from "react-hot-toast";
 
 const CAT_LABEL: Record<string, string> = {
@@ -46,6 +47,7 @@ export default function VerificheTesseramentiPage() {
   const [filtroStatoTessera, setFiltroStatoTessera] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroCertificato, setFiltroCertificato] = useState<"" | StatoCertificato>("");
+  const [mostraInSede, setMostraInSede] = useState(false);
 
   const carica = async () => {
     try { setItems(await fetchVerifiche()); }
@@ -94,7 +96,22 @@ export default function VerificheTesseramentiPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Verifiche tesseramenti</h1>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="text-xl font-bold text-gray-900">Tesseramenti</h1>
+        <button
+          onClick={() => setMostraInSede((v) => !v)}
+          className="self-start whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+        >
+          {mostraInSede ? "Chiudi" : "+ Tessera in sede"}
+        </button>
+      </div>
+      {mostraInSede && (
+        <div className="mb-8">
+          <TesseramentoInSede onFatto={caricaTesserati} />
+        </div>
+      )}
+
+      <h2 className="text-lg font-bold text-gray-900 mb-1">Verifiche tesseramenti online</h2>
       <p className="text-gray-500 text-sm mb-6">
         Tesseramenti attivi in via provvisoria da confermare. Verifica che il codice fiscale
         corrisponda al documento d&apos;identità (e la tutela, per i minori). Non confermati entro 30 giorni →

@@ -19,9 +19,9 @@ const QUICK_ACTIONS = [
     icon: "📊",
   },
   {
-    href: "/dirigenza/campi",
-    title: "Gestione Campi",
-    desc: "Configura gli slot prenotabili: orari, numero campi e tariffe",
+    href: "/dirigenza/eventi",
+    title: "Eventi campi",
+    desc: "Programma gli eventi, gestisci presenze, pagamenti in sede e lista d'attesa",
     color: "bg-emerald-600",
     icon: "🏸",
   },

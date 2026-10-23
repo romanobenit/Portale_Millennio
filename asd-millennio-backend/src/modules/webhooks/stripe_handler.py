@@ -23,7 +23,7 @@ router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 @limiter.limit("200/minute")
 async def stripe_webhook(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
@@ -74,6 +74,9 @@ async def stripe_webhook(
         if tipo == "prenotazione_campo":
             from modules.campi.service import CampiService
             await CampiService(db).conferma_pagamento(session_id)
+        elif tipo == "evento":
+            from modules.eventi.service import EventiService
+            await EventiService(db).conferma_pagamento(session_id)
         elif tipo == "tessera":
             from modules.soci.tesseramento_service import TesseramentoService
             await TesseramentoService(db).conferma_pagamento_tessera(session_id)
@@ -88,6 +91,9 @@ async def stripe_webhook(
             await TesseramentoService(db).gestisci_pagamento_fallito(
                 stripe_session_id=expired_session["id"]
             )
+        elif tipo_scaduto == "evento":
+            from modules.eventi.service import EventiService
+            await EventiService(db).gestisci_sessione_scaduta(expired_session["id"])
         else:
             await nft_service.gestisci_sessione_scaduta(expired_session["id"])
 
@@ -101,7 +107,11 @@ async def stripe_webhook(
         pagamento_tessera_id_meta = pi_meta.get("pagamento_tessera_id")
         acquisto_id_meta = pi_meta.get("acquisto_id")
 
-        if pagamento_tessera_id_meta:
+        if pi_meta.get("tipo") == "evento":
+            # Il posto resta trattenuto fino alla scadenza della sessione: un tentativo
+            # di carta fallito non lo rilascia, se ne occupa checkout.session.expired.
+            pass
+        elif pagamento_tessera_id_meta:
             from modules.soci.tesseramento_service import TesseramentoService
             try:
                 from uuid import UUID as _UUID
@@ -154,6 +164,9 @@ async def stripe_webhook(
         # Il campo payment_intent nella charge object collega i due.
         pi_id_from_charge = charge_obj.to_dict().get("payment_intent")
         logger.info("Rimborso ricevuto: charge=%s pi=%s", charge_id, pi_id_from_charge)
+        if pi_id_from_charge:
+            from modules.eventi.service import EventiService
+            await EventiService(db).segna_rimborso_esterno(pi_id_from_charge)
         from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
         from models.slot_calendario import SlotCalendario
         result = await db.execute(

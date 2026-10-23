@@ -441,6 +441,38 @@ GET /api/v1/calendario/riepilogo-selezione          → totale e dettaglio ore s
 
 ---
 
+### Eventi campi — prenotazione del Palasirio per evento
+
+Distinto dal calendario NFT: è l'uso quotidiano del Palasirio (pickleball/badminton). **Non si prenota a ore**:
+la dirigenza individua degli **eventi** (finestre di ~1h30–2h, `eventi_campo`) e chi partecipa paga
+l'**ingresso per tutta la durata** (arrivo e permanenza flessibili). Ha sostituito il vecchio sistema a ore
+(`slot_template_campo` / `prenotazioni_campo`, modulo `campi`), le cui tabelle restano solo per lo storico.
+
+**Regole:**
+- **Online** (Stripe Checkout): qualunque utente registrato con profilo socio. Il posto resta trattenuto
+  31 min (= scadenza della sessione Stripe, minimo 30). Doppia verifica webhook + `Session.retrieve`; un
+  pagamento arrivato dopo il rilascio del posto viene confermato solo se c'è ancora posto, altrimenti rimborsato.
+- **Pago in sede**: solo soci con **tessera attiva** e meno di **2 assenze**.
+- **Annullamento** fino alla fine del giorno prima (Europe/Rome). Online → **rimborso Stripe automatico**.
+- **Assenze**: le segna la dirigenza ("non presentato", solo su prenotazioni in sede, solo da inizio evento).
+  Dopo 2 → solo online, finché la dirigenza non le **azzera** (`soci.assenze_azzerate_at`).
+- **Posti massimi** per evento; contatore = prenotazioni confermate + `presenze_manuali` (correzione della
+  dirigenza per chi entra senza prenotare). Evento pieno → **lista d'attesa**; quando si libera un posto
+  l'email va a **tutta** la lista e il posto va a chi conferma per primo.
+- Annullamento di un evento da parte della dirigenza → rimborso di tutti gli online + email ai partecipanti.
+- Home pubblica: evento più vicino in evidenza + elenco dei successivi, ciascuno col contatore.
+
+**Endpoint:** `GET /eventi` (pubblico), `GET /eventi/mie`, `POST /eventi/{id}/prenota`,
+`POST /eventi/prenotazioni/{id}/annulla`, `POST|DELETE /eventi/{id}/lista-attesa`;
+dirigenza/staff sotto `/dirigenza/eventi` (CRUD eventi, dettaglio partecipanti, presenze, presenze manuali,
+aggiunta partecipante in sede, ricerca soci, azzeramento assenze).
+
+**Tesseramento in sede** (`POST /soci/tesseramento-in-sede`, staff/dirigenza): socio nuovo o esistente
+(solo maggiorenni) + tessera **attiva e già verificata** in un'unica transazione; consensi registrati come
+`testo_versione='v1-cartaceo'`. Il pagamento della quota in sede non viene ancora registrato a sistema.
+
+---
+
 ### M04-NFT — Raccolta fondi Palasirio
 
 Questo è il modulo più critico dell'MVP. Segui il flusso end-to-end con precisione.
@@ -934,4 +966,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Settembre 2026 — ASD Millennio Team Dev — v2.1 (certificato medico su tessera: tipo/scadenza, upload self-service, alert Celery)*
+*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.2 (eventi campi al posto della prenotazione a ore; tesseramento in sede)*

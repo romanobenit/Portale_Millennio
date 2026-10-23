@@ -33,6 +33,9 @@ class Socio(Base):
     tutore_id = Column(UUID(as_uuid=True), ForeignKey("soci.id"), nullable=True)
     sport = Column(ARRAY(String), default=list)
     keycloak_user_id = Column(String, unique=True, nullable=True)
+    # Le assenze "pago in sede" segnate prima di questo istante non contano più
+    # per il blocco (azzeramento da parte della dirigenza).
+    assenze_azzerate_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # updated_at è gestito dal trigger PostgreSQL (migration) — non usare onupdate qui per evitare conflitti
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -213,8 +213,11 @@ async def test_webhook_charge_refunded_legge_payment_intent_reale():
     links_result.all.return_value = []
     db.execute = AsyncMock(side_effect=[webhook_check, acquisto_result, links_result])
 
-    with patch("modules.webhooks.stripe_handler.stripe.Webhook.construct_event", return_value=real_event):
+    rimborso_evento = AsyncMock()
+    with patch("modules.webhooks.stripe_handler.stripe.Webhook.construct_event", return_value=real_event), \
+         patch("modules.eventi.service.EventiService.segna_rimborso_esterno", rimborso_evento):
         result = await stripe_webhook(_fake_request(payload_dict), db=db)
 
     assert result == {"status": "ok"}
     assert acquisto_mock.stato == "rimborsato"
+    rimborso_evento.assert_awaited_once_with("pi_test_regressione")

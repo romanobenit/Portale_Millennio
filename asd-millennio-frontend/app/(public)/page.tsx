@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { siteConfig } from "@/lib/site";
 import { Hero } from "@/components/site/home/Hero";
+import { ProssimiEventi } from "@/components/site/home/ProssimiEventi";
 import { ChiSiamo } from "@/components/site/home/ChiSiamo";
 import { Attivita } from "@/components/site/home/Attivita";
 import { PercheSceglierci } from "@/components/site/home/PercheSceglierci";
@@ -18,6 +19,7 @@ export default function HomePage() {
   return (
     <>
       <Hero />
+      <ProssimiEventi />
       <ChiSiamo />
       <Attivita />
       <PercheSceglierci />

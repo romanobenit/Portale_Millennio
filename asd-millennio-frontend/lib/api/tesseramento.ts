@@ -175,6 +175,36 @@ export async function fetchTesserati(filtri?: {
   return data;
 }
 
+export interface TesseramentoInSedeInput {
+  socio_id?: string;
+  anagrafica?: {
+    nome: string;
+    cognome: string;
+    data_nascita: string;
+    codice_fiscale: string;
+    email: string;
+    telefono?: string | null;
+    indirizzo?: string | null;
+  };
+  categoria: string;
+  consensi_firmati: boolean;
+}
+
+export interface TesseramentoInSedeEsito {
+  socio_id: string;
+  nome: string;
+  cognome: string;
+  tessera_id: string;
+  numero_tessera: string;
+  categoria: string;
+  data_scadenza: string | null;
+}
+
+export async function tesseramentoInSede(input: TesseramentoInSedeInput): Promise<TesseramentoInSedeEsito> {
+  const { data } = await apiClient.post<TesseramentoInSedeEsito>("/soci/tesseramento-in-sede", input);
+  return data;
+}
+
 export async function confermaVerifica(tesseraId: string): Promise<void> {
   await apiClient.post(`/soci/verifiche/${tesseraId}/conferma`);
 }
