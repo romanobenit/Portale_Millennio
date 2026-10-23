@@ -48,7 +48,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href={portalLinks.prenotaCampo} className="text-slate-400 transition-colors hover:text-white">
-                  Prenota campo
+                  Prenota presenza
                 </Link>
               </li>
               <li>

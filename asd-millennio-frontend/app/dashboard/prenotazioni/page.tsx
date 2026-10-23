@@ -127,7 +127,7 @@ export default function PrenotaEventiPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Prenota un evento</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Prenota presenza</h1>
         <p className="mt-1 text-sm text-gray-500">
           L&apos;ingresso vale per tutta la durata dell&apos;evento: arriva quando vuoi e gioca quanto vuoi.
         </p>

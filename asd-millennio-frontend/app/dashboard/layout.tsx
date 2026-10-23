@@ -14,7 +14,7 @@ const NAV_LINKS = [
   { href: "/dashboard/miei-nft", label: "Il mio sostegno" },
   { href: "/dashboard/tessere", label: "Le mie tessere" },
   { href: "/dashboard/minori", label: "I miei minori" },
-  { href: "/dashboard/prenotazioni", label: "Prenota campo", highlight: true },
+  { href: "/dashboard/prenotazioni", label: "Prenota presenza", highlight: true },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

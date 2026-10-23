@@ -10,7 +10,7 @@ import { Container } from "./Container";
 
 /**
  * Header pubblico sticky, responsive e accessibile.
- * - Desktop: navigazione inline + CTA "Prenota campo" e "Area soci".
+ * - Desktop: navigazione inline + CTA "Prenota presenza" e "Area soci".
  * - Mobile: "Area soci" sempre visibile + menu a comparsa (hamburger) con gestione focus/aria.
  */
 export function Navbar() {
@@ -67,7 +67,7 @@ export function Navbar() {
             href={portalLinks.prenotaCampo}
             className="whitespace-nowrap rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
           >
-            Prenota campo
+            Prenota presenza
           </Link>
           <Link
             href={portalLinks.areaSoci}
@@ -111,7 +111,7 @@ export function Navbar() {
               href={portalLinks.prenotaCampo}
               className="mb-2 block rounded-lg bg-accent-500 px-3 py-2.5 text-center text-base font-semibold text-white"
             >
-              Prenota campo
+              Prenota presenza
             </Link>
             {mainNav.map((item) => (
               <Link
