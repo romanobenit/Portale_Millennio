@@ -29,7 +29,7 @@ export default function AcquistoNFTPage() {
           apiClient.get<Tessera[]>(`/soci/${socio.id}/tessere`, { params: { stato: "attiva" } }),
           fetchMinoriSocio(socio.id).catch(() => [] as Socio[]),
         ]);
-        setTesseraAttiva(tessereResp.data.length > 0);
+        setTesseraAttiva(tessereResp.data.some((t) => t.sport !== "community"));
         setMinori(minoriResp);
       })
       .catch(() => {});

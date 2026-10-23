@@ -488,7 +488,8 @@ async def test_lista_tesserati_mappa_righe_con_tutore():
     db = _mock_db()
     result = MagicMock()
     result.all.return_value = [(tessera, minore, tutore)]
-    db.execute = AsyncMock(return_value=result)
+    nessuna_esterna = MagicMock(); nessuna_esterna.all.return_value = []
+    db.execute = AsyncMock(side_effect=[result, nessuna_esterna])
 
     out = await TesseramentoService(db).lista_tesserati()
 
@@ -527,7 +528,8 @@ async def test_lista_tesserati_senza_tutore():
     db = _mock_db()
     result = MagicMock()
     result.all.return_value = [(tessera, socio, None)]
-    db.execute = AsyncMock(return_value=result)
+    nessuna_esterna = MagicMock(); nessuna_esterna.all.return_value = []
+    db.execute = AsyncMock(side_effect=[result, nessuna_esterna])
 
     out = await TesseramentoService(db).lista_tesserati(stato="scaduta")
 
@@ -590,8 +592,37 @@ async def test_auto_conferma_scadute():
         t.verifica_stato = "in_verifica"
     db = _mock_db()
     r = MagicMock(); r.scalars.return_value.all.return_value = [t1, t2]
-    db.execute = AsyncMock(return_value=r)
+    vuoto = MagicMock(); vuoto.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[r, vuoto])
     n = await TesseramentoService(db).auto_conferma_scadute()
     assert n == 2
     assert t1.verifica_stato == "confermata" and t2.verifica_stato == "confermata"
     assert t1.verificata_da is not t1  # verificata_da resta None (silenzio-assenso), non impostato a un socio
+
+
+@pytest.mark.asyncio
+async def test_auto_conferma_anche_tessere_esterne():
+    from modules.soci.tesseramento_service import TesseramentoService
+    te = MagicMock(); te.verifica_stato = "in_verifica"
+    vuoto = MagicMock(); vuoto.scalars.return_value.all.return_value = []
+    esterne = MagicMock(); esterne.scalars.return_value.all.return_value = [te]
+    db = _mock_db()
+    db.execute = AsyncMock(side_effect=[vuoto, esterne])
+    n = await TesseramentoService(db).auto_conferma_scadute()
+    assert n == 1
+    assert te.verifica_stato == "confermata"
+
+
+@pytest.mark.asyncio
+async def test_tessera_esterna_scaduta_rifiutata():
+    from modules.soci.tesseramento_service import TesseramentoService
+    from schemas.tesseramento import TesseraEsternaCreate
+    dati = TesseraEsternaCreate(
+        ente="CSI", asd_nome="ASD Prova", numero_tessera="123", disciplina="Pickleball",
+        data_scadenza=date(2020, 1, 1),
+    )
+    with pytest.raises(HTTPException) as e:
+        await TesseramentoService(_mock_db()).carica_tessera_esterna(
+            uuid4(), uuid4(), dati, "t.pdf", "application/pdf", b"%PDF",
+        )
+    assert e.value.status_code == 422

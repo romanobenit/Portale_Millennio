@@ -44,7 +44,33 @@ export interface Quota {
   note: string | null;
 }
 
+export interface TesseraEsterna {
+  id: string;
+  socio_id: string;
+  ente: string;
+  asd_nome: string;
+  asd_codice: string | null;
+  numero_tessera: string;
+  disciplina: string;
+  data_scadenza: string;
+  documento_id: string | null;
+  verifica_stato: "in_verifica" | "confermata" | "rifiutata";
+  verifica_scadenza: string | null;
+  created_at: string;
+}
+
+export interface TesseraEsternaInput {
+  ente: string;
+  asd_nome: string;
+  asd_codice?: string;
+  numero_tessera: string;
+  disciplina: string;
+  data_scadenza: string;
+}
+
 export interface TesseramentoDaVerificare {
+  tipo: "tesseramento" | "rinnovo_tessera_esterna";
+  tessera_esterna: TesseraEsterna | null;
   tessera_id: string;
   numero_tessera: string;
   categoria: string;
@@ -66,6 +92,7 @@ export interface Tesserato {
   verifica_stato: string | null;
   certificato_medico_tipo: "non_agonistico" | "agonistico" | null;
   certificato_medico_scadenza: string | null;
+  tessera_esterna_scadenza: string | null;
   socio: { id: string; nome: string; cognome: string; codice_fiscale: string; is_minor: boolean };
   tutore: { id: string; nome: string; cognome: string } | null;
 }
@@ -93,6 +120,30 @@ export async function caricaDocumento(
 
 export async function fetchMieiDocumenti(socioId?: string): Promise<DocumentoResponse[]> {
   const { data } = await apiClient.get<DocumentoResponse[]>("/soci/me/documenti", {
+    params: socioId ? { socio_id: socioId } : undefined,
+  });
+  return data;
+}
+
+export async function caricaTesseraEsterna(
+  dati: TesseraEsternaInput,
+  file: File,
+  socioId?: string,
+): Promise<TesseraEsterna> {
+  const form = new FormData();
+  Object.entries(dati).forEach(([k, v]) => {
+    if (v) form.append(k, v);
+  });
+  form.append("file", file);
+  const { data } = await apiClient.post<TesseraEsterna>("/soci/me/tessere-esterne", form, {
+    params: socioId ? { socio_id: socioId } : undefined,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function fetchTessereEsterne(socioId?: string): Promise<TesseraEsterna[]> {
+  const { data } = await apiClient.get<TesseraEsterna[]>("/soci/me/tessere-esterne", {
     params: socioId ? { socio_id: socioId } : undefined,
   });
   return data;
@@ -211,6 +262,10 @@ export async function confermaVerifica(tesseraId: string): Promise<void> {
 
 export async function rifiutaVerifica(tesseraId: string): Promise<void> {
   await apiClient.post(`/soci/verifiche/${tesseraId}/rifiuta`);
+}
+
+export async function esitoTesseraEsterna(tesseraEsternaId: string, esito: "conferma" | "rifiuta"): Promise<void> {
+  await apiClient.post(`/soci/verifiche/tessere-esterne/${tesseraEsternaId}/${esito}`);
 }
 
 export async function scaricaDocumento(docId: string): Promise<void> {

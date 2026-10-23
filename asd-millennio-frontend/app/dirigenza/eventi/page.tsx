@@ -19,6 +19,7 @@ import {
   formattaOra,
   formattaPrezzo,
   impostaPresenzeManuali,
+  motivoNonPrenotabile,
   segnaPrenotazione,
   type EventoDettaglio,
   type EventoDirigenza,
@@ -401,7 +402,7 @@ function DettaglioEvento({ eventoId, onCambio }: { eventoId: string; onCambio: (
         </div>
       )}
 
-      {attivo && <AggiungiPartecipante eventoId={ev.id} onAggiunto={() => esegui("add", async () => undefined)} />}
+      {attivo && <AggiungiPartecipante eventoId={ev.id} dataEvento={ev.data} onAggiunto={() => esegui("add", async () => undefined)} />}
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-gray-900">Partecipanti prenotati ({dett.partecipanti.length})</h3>
@@ -532,7 +533,15 @@ function RigaPartecipante({
   );
 }
 
-function AggiungiPartecipante({ eventoId, onAggiunto }: { eventoId: string; onAggiunto: () => void }) {
+function AggiungiPartecipante({
+  eventoId,
+  dataEvento,
+  onAggiunto,
+}: {
+  eventoId: string;
+  dataEvento: string;
+  onAggiunto: () => void;
+}) {
   const [q, setQ] = useState("");
   const [risultati, setRisultati] = useState<SocioRicerca[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -578,7 +587,13 @@ function AggiungiPartecipante({ eventoId, onAggiunto }: { eventoId: string; onAg
       {risultati.length > 0 && (
         <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
           {risultati.map((s) => {
-            const motivo = !s.tessera_attiva ? "Tessera non attiva" : s.solo_online ? `${s.assenze} assenze: solo online` : null;
+            const motivo = motivoNonPrenotabile(s.abilitato_fino_al, dataEvento)
+              ? s.abilitato_fino_al
+                ? "Tessera non valida per questa data"
+                : "Né tessera Millennio né iscrizione community"
+              : s.solo_online
+                ? `${s.assenze} assenze: solo online`
+                : null;
             return (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <div className="min-w-0 text-sm">

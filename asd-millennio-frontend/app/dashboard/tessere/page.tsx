@@ -6,6 +6,7 @@ import { getKeycloak } from "@/lib/auth/keycloak";
 import { fetchMe, fetchTessereSocio, Tessera } from "@/lib/api/soci";
 import { riprendiPagamentoTessera } from "@/lib/api/tesseramento";
 import { CertificatoMedicoBox } from "@/components/soci/CertificatoMedicoBox";
+import { TesseraEsternaBox } from "@/components/soci/TesseraEsternaBox";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
@@ -15,6 +16,7 @@ const SPORT_LABEL: Record<string, string> = {
   kung_fu: "Kung Fu",
   pickleball: "Pickleball",
   sostenitore: "Socio Sostenitore",
+  community: "Iscrizione community",
 };
 
 const STATO_BADGE: Record<string, { label: string; classes: string }> = {
@@ -166,8 +168,12 @@ function TesseraCard({
           </div>
           <p className="text-sm text-gray-600">
             {SPORT_LABEL[tessera.sport] ?? tessera.sport}
-            {tessera.anno_sportivo && (
-              <span className="ml-2 whitespace-nowrap text-gray-400">— Anno sportivo {tessera.anno_sportivo}</span>
+            {tessera.sport === "community" ? (
+              <span className="ml-2 whitespace-nowrap text-gray-400">— senza scadenza</span>
+            ) : (
+              tessera.anno_sportivo && (
+                <span className="ml-2 whitespace-nowrap text-gray-400">— Anno sportivo {tessera.anno_sportivo}</span>
+              )
             )}
           </p>
         </div>
@@ -204,10 +210,19 @@ function TesseraCard({
         )}
       </div>
 
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-500 mb-1">Certificato medico</p>
-        <CertificatoMedicoBox tessera={tessera} onAggiornato={onCertificatoAggiornato} />
-      </div>
+      {tessera.sport === "community" ? (
+        tessera.stato === "attiva" && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-xs text-gray-500 mb-1">Tessera dell&apos;altra ASD (vale per prenotare gli eventi)</p>
+            <TesseraEsternaBox />
+          </div>
+        )
+      ) : (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Certificato medico</p>
+          <CertificatoMedicoBox tessera={tessera} onAggiornato={onCertificatoAggiornato} />
+        </div>
+      )}
     </div>
   );
 }

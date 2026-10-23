@@ -5,8 +5,14 @@ import { getKeycloak } from "@/lib/auth/keycloak";
 import type { Socio } from "@/lib/api/soci";
 import {
   fetchMieiMinori, aggiungiMinore, caricaDocumento,
-  firmaConsensoSocio, avviaTesseramentoMinore, MinoreData,
+  firmaConsensoSocio, avviaTesseramentoMinore, caricaTesseraEsterna, MinoreData,
+  type TesseraEsternaInput,
 } from "@/lib/api/tesseramento";
+import {
+  TesseraEsternaCampi,
+  TESSERA_ESTERNA_VUOTA,
+  erroreTesseraEsterna,
+} from "@/components/soci/TesseraEsternaCampi";
 import toast from "react-hot-toast";
 
 const CATEGORIE = [
@@ -14,6 +20,7 @@ const CATEGORIE = [
   { value: "badminton", label: "Badminton" },
   { value: "kung_fu", label: "Kung Fu" },
   { value: "pickleball", label: "Pickleball" },
+  { value: "community", label: "Community (tessera di un'altra ASD)" },
 ];
 
 export default function MinoriPage() {
@@ -59,7 +66,7 @@ export default function MinoriPage() {
           {showForm ? "Annulla" : "Aggiungi minore"}
         </button>
       </div>
-      <p className="text-gray-500 text-sm mb-6">Aggiungi un figlio minorenne e tesseralo. Il pagamento della quota è a tuo carico.</p>
+      <p className="text-gray-500 text-sm mb-6">Aggiungi un figlio minorenne e tesseralo, oppure iscrivilo alla community se ha già la tessera di un&apos;altra ASD. Il pagamento è a tuo carico.</p>
 
       {showForm && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 mb-6 space-y-3">
@@ -91,12 +98,18 @@ function MinoreCard({ minore }: { minore: Socio }) {
   const [cons, setCons] = useState({ privacy: false, trattamento_dati: false, foto_video: false });
   const [categoria, setCategoria] = useState("volley");
   const [busy, setBusy] = useState(false);
+  const [esterna, setEsterna] = useState<TesseraEsternaInput>(TESSERA_ESTERNA_VUOTA);
+  const [fileEsterna, setFileEsterna] = useState<File | null>(null);
+  const community = categoria === "community";
 
   const tessera = async () => {
     if (!identita || !tutela) { toast.error("Carica documento d'identità e prova della tutela."); return; }
     if (!cons.privacy || !cons.trattamento_dati || !cons.foto_video) { toast.error("Firma tutti e tre i consensi."); return; }
+    const erroreEsterna = community ? erroreTesseraEsterna(esterna, fileEsterna) : null;
+    if (erroreEsterna) { toast.error(erroreEsterna); return; }
     setBusy(true);
     try {
+      if (community) await caricaTesseraEsterna(esterna, fileEsterna!, minore.id);
       await caricaDocumento("identita", identita, minore.id);
       await caricaDocumento("tutela", tutela, minore.id);
       await firmaConsensoSocio(minore.id, "privacy");
@@ -133,14 +146,18 @@ function MinoreCard({ minore }: { minore: Socio }) {
           <Chk v={cons.privacy} on={(x) => setCons({ ...cons, privacy: x })} label="Informativa privacy (firma del tutore)" />
           <Chk v={cons.trattamento_dati} on={(x) => setCons({ ...cons, trattamento_dati: x })} label="Trattamento dati del minore" />
           <Chk v={cons.foto_video} on={(x) => setCons({ ...cons, foto_video: x })} label="Autorizzazione foto/video per le attività" />
-          <div className="flex items-center gap-2">
-            <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              {CATEGORIE.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <button onClick={tessera} disabled={busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
-              {busy ? "Attendi…" : "Paga la quota"}
-            </button>
-          </div>
+          <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {CATEGORIE.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          {community && (
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="mb-3 text-sm text-gray-600">Dati della tessera del minore presso l&apos;altra ASD.</p>
+              <TesseraEsternaCampi dati={esterna} onChange={setEsterna} onFile={setFileEsterna} />
+            </div>
+          )}
+          <button onClick={tessera} disabled={busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+            {busy ? "Attendi…" : community ? "Paga l'iscrizione community" : "Paga la quota"}
+          </button>
         </div>
       )}
     </div>

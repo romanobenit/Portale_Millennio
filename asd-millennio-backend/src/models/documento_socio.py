@@ -10,6 +10,7 @@ TipoDocumento = Enum(
     "identita",           # documento d'identità del socio (o del minore)
     "tutela",             # documento che prova la tutela del minore
     "certificato_medico", # certificato di idoneità sportiva (non agonistico/agonistico)
+    "tessera_esterna",    # tessera di un'altra ASD (iscrizione community)
     name="tipo_documento",
 )
 

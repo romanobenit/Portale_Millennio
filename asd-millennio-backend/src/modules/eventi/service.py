@@ -15,6 +15,7 @@ from core.logger import logger
 from models.evento import EventoCampo, ListaAttesaEvento, PrenotazioneEvento
 from models.socio import Socio
 from models.tessera import Tessera
+from models.tessera_esterna import TesseraEsterna
 from modules.eventi import email as eventi_email
 from schemas.eventi import (
     EventoCreate,
@@ -58,6 +59,26 @@ def scadenza_annullamento(ev: EventoCampo) -> datetime:
 
 def solo_online(assenze: int) -> bool:
     return assenze >= MAX_ASSENZE
+
+
+def fine_abilitazione(tessere: list[tuple[str, date | None]], scadenze_esterne: list[date]) -> date | None:
+    """
+    Fino a quale data si possono usare i campi (None = non abilitato).
+    `tessere`: (categoria, scadenza) delle tessere ATTIVE; `scadenze_esterne`: scadenze
+    delle tessere di altre ASD non rifiutate, che contano solo con l'iscrizione community.
+    """
+    fini = [scad or date.max for sport, scad in tessere if sport != "community"]
+    if any(sport == "community" for sport, _ in tessere):
+        fini += scadenze_esterne
+    return max(fini) if fini else None
+
+
+def motivo_non_abilitato(fino_al: date | None) -> str:
+    if fino_al is None:
+        return ("Per prenotare serve la tessera Millennio oppure l'iscrizione community "
+                "con la tessera di un'altra ASD.")
+    return (f"La tessera vale fino al {fino_al.strftime('%d/%m/%Y')}: per questo evento "
+            "va rinnovata o aggiornata da «Le mie tessere».")
 
 
 def calcola_posti(ev: EventoCampo, c: dict) -> tuple[int, int]:
@@ -158,13 +179,24 @@ class EventiService:
         out.update(dict(r.all()))
         return out
 
-    async def _con_tessera_attiva(self, socio_ids: list[UUID]) -> set[UUID]:
+    async def _abilitati_fino_al(self, socio_ids: list[UUID]) -> dict[UUID, date | None]:
         if not socio_ids:
-            return set()
+            return {}
+        tessere: dict[UUID, list] = {sid: [] for sid in socio_ids}
         r = await self.db.execute(
-            select(Tessera.socio_id).where(Tessera.socio_id.in_(socio_ids), Tessera.stato == "attiva").distinct()
+            select(Tessera.socio_id, Tessera.sport, Tessera.data_scadenza)
+            .where(Tessera.socio_id.in_(socio_ids), Tessera.stato == "attiva")
         )
-        return set(r.scalars().all())
+        for sid, sport, scad in r.all():
+            tessere[sid].append((sport, scad))
+        esterne: dict[UUID, list] = {sid: [] for sid in socio_ids}
+        r = await self.db.execute(
+            select(TesseraEsterna.socio_id, TesseraEsterna.data_scadenza)
+            .where(TesseraEsterna.socio_id.in_(socio_ids), TesseraEsterna.verifica_stato != "rifiutata")
+        )
+        for sid, scad in r.all():
+            esterne[sid].append(scad)
+        return {sid: fine_abilitazione(tessere[sid], esterne[sid]) for sid in socio_ids}
 
     async def _evento_per_update(self, evento_id: UUID) -> EventoCampo:
         ev = (
@@ -315,6 +347,10 @@ class EventiService:
             else:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="Hai già una prenotazione per questo evento")
 
+        fino_al = (await self._abilitati_fino_al([socio.id]))[socio.id]
+        if fino_al is None or ev.data > fino_al:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail=motivo_non_abilitato(fino_al))
+
         c = (await self._conteggi([ev.id]))[ev.id]
         if calcola_posti(ev, c)[1] <= 0:
             raise HTTPException(
@@ -323,11 +359,6 @@ class EventiService:
             )
 
         if modalita == "in_sede":
-            if socio.id not in await self._con_tessera_attiva([socio.id]):
-                raise HTTPException(
-                    status.HTTP_403_FORBIDDEN,
-                    detail="Il pagamento in sede è riservato ai soci con tessera attiva",
-                )
             if solo_online((await self._assenze([socio.id]))[socio.id]):
                 raise HTTPException(
                     status.HTTP_403_FORBIDDEN,
@@ -534,6 +565,9 @@ class EventiService:
         await self._scadi_lock(evento_id=ev.id)
         if await self._prenotazione_attiva(ev.id, socio_id):
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Sei già prenotato per questo evento")
+        fino_al = (await self._abilitati_fino_al([socio_id]))[socio_id]
+        if fino_al is None or ev.data > fino_al:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail=motivo_non_abilitato(fino_al))
         c = (await self._conteggi([ev.id]))[ev.id]
         if calcola_posti(ev, c)[1] > 0:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Ci sono ancora posti liberi: prenota direttamente")
@@ -587,7 +621,7 @@ class EventiService:
             lista_attesa=list(attesa),
             assenze=assenze,
             solo_online=solo_online(assenze),
-            tessera_attiva=socio.id in await self._con_tessera_attiva([socio.id]),
+            abilitato_fino_al=(await self._abilitati_fino_al([socio.id]))[socio.id],
         )
 
     # ─── dirigenza ──────────────────────────────────────────────────────────
@@ -792,12 +826,12 @@ class EventiService:
         )
         soci = r.scalars().all()
         ids = [s.id for s in soci]
-        tesserati = await self._con_tessera_attiva(ids)
+        abilitati = await self._abilitati_fino_al(ids)
         assenze = await self._assenze(ids)
         return [
             SocioRicercaResponse(
                 id=s.id, nome=s.nome, cognome=s.cognome, codice_fiscale=s.codice_fiscale,
-                tessera_attiva=s.id in tesserati, assenze=assenze[s.id], solo_online=solo_online(assenze[s.id]),
+                abilitato_fino_al=abilitati[s.id], assenze=assenze[s.id], solo_online=solo_online(assenze[s.id]),
             )
             for s in soci
         ]

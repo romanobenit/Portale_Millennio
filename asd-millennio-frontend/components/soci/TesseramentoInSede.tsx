@@ -172,7 +172,7 @@ export function TesseramentoInSede({ onFatto }: { onFatto: () => void }) {
                       {s.cognome} {s.nome}
                     </span>
                     <span className="ml-2 font-mono text-xs text-gray-500">{s.codice_fiscale}</span>
-                    {s.tessera_attiva && <span className="ml-2 text-xs text-green-700">ha già una tessera attiva</span>}
+                    {s.abilitato_fino_al && <span className="ml-2 text-xs text-green-700">già abilitato/a ai campi</span>}
                   </button>
                 </li>
               ))}

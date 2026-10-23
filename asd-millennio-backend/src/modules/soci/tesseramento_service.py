@@ -13,7 +13,7 @@ from uuid import UUID
 
 import stripe
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from models.pagamento_tessera import PagamentoTessera
 from models.quota_tessera import QuotaTessera
 from models.socio import Socio
 from models.tessera import Tessera
+from models.tessera_esterna import TesseraEsterna
 from modules.soci.codice_fiscale import cf_valido
 from modules.soci.repository import SociRepository
 from modules.soci.service import _calcola_scadenza_tessera, _genera_numero_tessera
@@ -232,6 +233,73 @@ class TesseramentoService:
         await self.db.refresh(tessera)
         return TesseraResponse.model_validate(tessera)
 
+    # ── tessera di un'altra ASD (iscrizione community) ─────────────────────────
+
+    async def carica_tessera_esterna(
+        self, socio_id: UUID, caricato_da: UUID, dati,
+        filename: str, content_type: str, content: bytes,
+    ):
+        from schemas.tesseramento import TesseraEsternaResponse
+
+        if dati.data_scadenza < date.today():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La tessera risulta già scaduta: carica quella in corso di validità.",
+            )
+        try:
+            rel_path, size = storage.salva_documento(content, content_type)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        doc = DocumentoSocio(
+            socio_id=socio_id, tipo="tessera_esterna", filename=filename[:255],
+            content_type=content_type, storage_path=rel_path, size_bytes=size, caricato_da=caricato_da,
+        )
+        self.db.add(doc)
+        await self.db.flush()
+        te = TesseraEsterna(
+            socio_id=socio_id,
+            ente=dati.ente,
+            asd_nome=dati.asd_nome,
+            asd_codice=dati.asd_codice or None,
+            numero_tessera=dati.numero_tessera,
+            disciplina=dati.disciplina,
+            data_scadenza=dati.data_scadenza,
+            documento_id=doc.id,
+            verifica_stato="in_verifica",
+            verifica_scadenza=datetime.now(timezone.utc) + timedelta(days=settings.tesseramento_verifica_giorni),
+            caricata_da=caricato_da,
+        )
+        self.db.add(te)
+        await self.db.flush()
+        await self.db.refresh(te)
+        logger.info("Tessera esterna caricata: %s (socio %s)", te.id, socio_id)
+        return TesseraEsternaResponse.model_validate(te)
+
+    async def lista_tessere_esterne(self, socio_id: UUID) -> list:
+        from schemas.tesseramento import TesseraEsternaResponse
+
+        r = await self.db.execute(
+            select(TesseraEsterna).where(TesseraEsterna.socio_id == socio_id)
+            .order_by(TesseraEsterna.created_at.desc())
+        )
+        return [TesseraEsternaResponse.model_validate(t) for t in r.scalars().all()]
+
+    async def _tessera_esterna_valida(self, socio_id: UUID) -> TesseraEsterna | None:
+        return (await self.db.execute(
+            select(TesseraEsterna).where(
+                TesseraEsterna.socio_id == socio_id,
+                TesseraEsterna.verifica_stato != "rifiutata",
+                TesseraEsterna.data_scadenza >= date.today(),
+            ).order_by(TesseraEsterna.created_at.desc())
+        )).scalars().first()
+
+    async def _ultima_tessera_esterna_in_verifica(self, socio_id: UUID) -> TesseraEsterna | None:
+        return (await self.db.execute(
+            select(TesseraEsterna).where(
+                TesseraEsterna.socio_id == socio_id, TesseraEsterna.verifica_stato == "in_verifica",
+            ).order_by(TesseraEsterna.created_at.desc())
+        )).scalars().first()
+
     async def _ha_documento(self, socio_id: UUID, tipo: str) -> bool:
         r = await self.db.execute(
             select(DocumentoSocio).where(
@@ -303,19 +371,26 @@ class TesseramentoService:
                     detail="Firma i consensi privacy e trattamento dati prima di procedere.",
                 )
 
-        # niente doppioni: una tessera attiva/in attesa per (categoria, anno)
-        esistente = (await self.db.execute(
-            select(Tessera).where(
-                Tessera.socio_id == socio.id,
-                Tessera.sport == categoria,
-                Tessera.anno_sportivo == anno,
-                Tessera.stato.in_(["in_attesa_pagamento", "attiva"]),
-            )
-        )).scalars().first()
-        if esistente:
+        community = categoria == "community"
+        # niente doppioni: una tessera attiva/in attesa per (categoria, anno);
+        # l'iscrizione community non scade, quindi una sola in assoluto.
+        q_esistente = select(Tessera).where(
+            Tessera.socio_id == socio.id,
+            Tessera.sport == categoria,
+            Tessera.stato.in_(["in_attesa_pagamento", "attiva"]),
+        )
+        if not community:
+            q_esistente = q_esistente.where(Tessera.anno_sportivo == anno)
+        if (await self.db.execute(q_esistente)).scalars().first():
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                detail="Esiste già una tessera per questa categoria e anno sportivo.",
+                detail="Iscrizione community già presente." if community
+                else "Esiste già una tessera per questa categoria e anno sportivo.",
+            )
+        if community and not await self._tessera_esterna_valida(socio.id):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Carica la tessera della tua ASD (in corso di validità) prima di procedere.",
             )
 
         quota = await self._quota(categoria, is_minore, anno)
@@ -327,7 +402,7 @@ class TesseramentoService:
             sport=categoria,
             stato="in_attesa_pagamento",
             anno_sportivo=anno,
-            data_scadenza=_calcola_scadenza_tessera(anno),
+            data_scadenza=None if community else _calcola_scadenza_tessera(anno),
             data_emissione=date.today(),
         )
         self.db.add(tessera)
@@ -375,7 +450,8 @@ class TesseramentoService:
                 "price_data": {
                     "currency": "eur",
                     "unit_amount": unit_amount,
-                    "product_data": {"name": f"Quota associativa ASD Millennio — {categoria}"},
+                    "product_data": {"name": "Iscrizione community ASD Millennio" if categoria == "community"
+                                     else f"Quota associativa ASD Millennio — {categoria}"},
                 },
                 "quantity": 1,
             }],
@@ -522,6 +598,8 @@ class TesseramentoService:
             DocumentoBreve, SocioBreve, TesseramentoDaVerificare,
         )
 
+        from schemas.tesseramento import TesseraEsternaResponse
+
         tessere = (await self.db.execute(
             select(Tessera).where(Tessera.verifica_stato == "in_verifica")
             .order_by(Tessera.verifica_scadenza)
@@ -539,6 +617,7 @@ class TesseramentoService:
             pag = (await self.db.execute(
                 select(PagamentoTessera).where(PagamentoTessera.tessera_id == t.id)
             )).scalars().first()
+            te = await self._ultima_tessera_esterna_in_verifica(t.socio_id) if t.sport == "community" else None
             out.append(TesseramentoDaVerificare(
                 tessera_id=t.id,
                 numero_tessera=t.numero_tessera,
@@ -546,17 +625,55 @@ class TesseramentoService:
                 anno_sportivo=t.anno_sportivo,
                 verifica_scadenza=t.verifica_scadenza,
                 importo_eur=float(pag.importo_eur) if pag else None,
-                socio=SocioBreve(
-                    id=socio.id, nome=socio.nome, cognome=socio.cognome,
-                    codice_fiscale=socio.codice_fiscale, is_minor=socio.is_minor,
-                ),
-                tutore=SocioBreve(
-                    id=tutore.id, nome=tutore.nome, cognome=tutore.cognome,
-                    codice_fiscale=tutore.codice_fiscale, is_minor=tutore.is_minor,
-                ) if tutore else None,
+                socio=self._breve(socio),
+                tutore=self._breve(tutore) if tutore else None,
                 documenti=[DocumentoBreve(id=d.id, tipo=d.tipo, filename=d.filename) for d in docs],
+                tessera_esterna=TesseraEsternaResponse.model_validate(te) if te else None,
+            ))
+
+        # Rinnovi: tessera esterna aggiornata da chi ha già un'iscrizione community verificata.
+        rinnovi = (await self.db.execute(
+            select(TesseraEsterna, Tessera)
+            .join(Tessera, and_(
+                Tessera.socio_id == TesseraEsterna.socio_id,
+                Tessera.sport == "community",
+                Tessera.stato == "attiva",
+            ))
+            .where(
+                TesseraEsterna.verifica_stato == "in_verifica",
+                or_(Tessera.verifica_stato.is_(None), Tessera.verifica_stato != "in_verifica"),
+            )
+            .order_by(TesseraEsterna.verifica_scadenza)
+        )).all()
+        for te, t in rinnovi:
+            socio = await self.repo.get_by_id(te.socio_id)
+            if not socio:
+                continue
+            tutore = await self.repo.get_by_id(socio.tutore_id) if socio.tutore_id else None
+            doc = (await self.db.execute(
+                select(DocumentoSocio).where(DocumentoSocio.id == te.documento_id)
+            )).scalar_one_or_none() if te.documento_id else None
+            out.append(TesseramentoDaVerificare(
+                tipo="rinnovo_tessera_esterna",
+                tessera_id=t.id,
+                numero_tessera=t.numero_tessera,
+                categoria=t.sport,
+                anno_sportivo=t.anno_sportivo,
+                verifica_scadenza=te.verifica_scadenza,
+                importo_eur=None,
+                socio=self._breve(socio),
+                tutore=self._breve(tutore) if tutore else None,
+                documenti=[DocumentoBreve(id=doc.id, tipo=doc.tipo, filename=doc.filename)] if doc else [],
+                tessera_esterna=TesseraEsternaResponse.model_validate(te),
             ))
         return out
+
+    @staticmethod
+    def _breve(s: Socio):
+        from schemas.tesseramento import SocioBreve
+        return SocioBreve(
+            id=s.id, nome=s.nome, cognome=s.cognome, codice_fiscale=s.codice_fiscale, is_minor=s.is_minor,
+        )
 
     async def lista_tesserati(
         self, stato: str | None = None, categoria: str | None = None, anno_sportivo: str | None = None,
@@ -580,8 +697,14 @@ class TesseramentoService:
         q = q.order_by(Socio.cognome, Socio.nome)
 
         rows = (await self.db.execute(q)).all()
+        scad_esterne = dict((await self.db.execute(
+            select(TesseraEsterna.socio_id, func.max(TesseraEsterna.data_scadenza))
+            .where(TesseraEsterna.verifica_stato != "rifiutata")
+            .group_by(TesseraEsterna.socio_id)
+        )).all())
         return [
             TesseratoResponse(
+                tessera_esterna_scadenza=scad_esterne.get(socio.id) if t.sport == "community" else None,
                 tessera_id=t.id,
                 numero_tessera=t.numero_tessera,
                 categoria=t.sport,
@@ -618,8 +741,33 @@ class TesseramentoService:
         t.verifica_stato = "confermata"
         t.verificata_da = verificatore_socio_id
         t.verificata_at = datetime.now(timezone.utc)
+        if t.sport == "community":
+            await self._esito_tessera_esterna_iniziale(t.socio_id, "confermata", verificatore_socio_id)
         await self.db.flush()
         logger.info("Tesseramento %s confermato dallo staff.", tessera_id)
+
+    async def _esito_tessera_esterna_iniziale(self, socio_id: UUID, esito: str, verificatore: UUID | None) -> None:
+        """La tessera esterna caricata con l'iscrizione community segue l'esito dell'iscrizione."""
+        te = await self._ultima_tessera_esterna_in_verifica(socio_id)
+        if te:
+            te.verifica_stato = esito
+            te.verificata_da = verificatore
+            te.verificata_at = datetime.now(timezone.utc)
+
+    async def esito_tessera_esterna(self, tessera_esterna_id: UUID, esito: str, verificatore: UUID | None) -> None:
+        """Verifica di una tessera esterna aggiornata (rinnovo): nessun effetto sui pagamenti."""
+        te = (await self.db.execute(
+            select(TesseraEsterna).where(TesseraEsterna.id == tessera_esterna_id)
+        )).scalar_one_or_none()
+        if not te:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tessera esterna non trovata")
+        if te.verifica_stato != "in_verifica":
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Tessera esterna non in verifica")
+        te.verifica_stato = esito
+        te.verificata_da = verificatore
+        te.verificata_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        logger.info("Tessera esterna %s → %s", tessera_esterna_id, esito)
 
     async def rifiuta_verifica(self, tessera_id: UUID, verificatore_socio_id: UUID | None) -> None:
         """
@@ -636,6 +784,8 @@ class TesseramentoService:
         )).scalars().first()
         if pag and pag.stato == "pagato":
             pag.stato = "erogazione_liberale"
+        if t.sport == "community":
+            await self._esito_tessera_esterna_iniziale(t.socio_id, "rifiutata", verificatore_socio_id)
         await self.db.flush()
         logger.info("Tesseramento %s rifiutato → quota come erogazione liberale.", tessera_id)
 
@@ -651,9 +801,18 @@ class TesseramentoService:
         for t in tessere:
             t.verifica_stato = "confermata"
             t.verificata_at = now  # verificata_da resta NULL = conferma automatica
-        if tessere:
+        esterne = (await self.db.execute(
+            select(TesseraEsterna).where(
+                TesseraEsterna.verifica_stato == "in_verifica",
+                TesseraEsterna.verifica_scadenza <= now,
+            )
+        )).scalars().all()
+        for te in esterne:
+            te.verifica_stato = "confermata"
+            te.verificata_at = now
+        if tessere or esterne:
             await self.db.flush()
-        return len(tessere)
+        return len(tessere) + len(esterne)
 
     # ── tesseramento in sede (dirigenza/staff) ─────────────────────────────────
 

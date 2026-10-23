@@ -1,7 +1,8 @@
 from datetime import date, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
+from pydantic import ValidationError
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,8 @@ from schemas.tesseramento import (
     MinoreCreate,
     SocioOnboarding,
     TesseramentoCheckoutResponse,
+    TesseraEsternaCreate,
+    TesseraEsternaResponse,
     TesseramentoDaVerificare,
     TesseramentoInSedeRequest,
     TesseramentoInSedeResponse,
@@ -163,6 +166,45 @@ async def carica_documento_self(
         file.content_type or "application/octet-stream",
         content,
     )
+
+
+@router.post("/me/tessere-esterne", response_model=TesseraEsternaResponse, status_code=201)
+async def carica_tessera_esterna(
+    ente: str = Form(...),
+    asd_nome: str = Form(...),
+    numero_tessera: str = Form(...),
+    disciplina: str = Form(...),
+    data_scadenza: date = Form(...),
+    asd_codice: str | None = Form(None),
+    socio_id: UUID | None = Query(None, description="socio destinatario (default: il proprio; per minori il figlio)"),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """Tessera di un'altra ASD (iscrizione community): dati + foto/scansione cifrata."""
+    try:
+        dati = TesseraEsternaCreate(
+            ente=ente, asd_nome=asd_nome, asd_codice=asd_codice, numero_tessera=numero_tessera,
+            disciplina=disciplina, data_scadenza=data_scadenza,
+        )
+    except ValidationError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Dati della tessera incompleti o non validi.")
+    me, target = await _socio_target(user, db, socio_id)
+    content = await file.read(storage.MAX_DOC_BYTES + 1)
+    return await TesseramentoService(db).carica_tessera_esterna(
+        target.id, me.id, dati,
+        file.filename or "tessera", file.content_type or "application/octet-stream", content,
+    )
+
+
+@router.get("/me/tessere-esterne", response_model=list[TesseraEsternaResponse])
+async def lista_tessere_esterne(
+    socio_id: UUID | None = Query(None),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    _me, target = await _socio_target(user, db, socio_id)
+    return await TesseramentoService(db).lista_tessere_esterne(target.id)
 
 
 @router.get("/me/documenti", response_model=list[DocumentoResponse])
@@ -344,6 +386,22 @@ async def rifiuta_tesseramento(
     """Rifiuta il tesseramento: la tessera decade e la quota diventa erogazione liberale."""
     verificatore = await SociRepository(db).get_by_keycloak_id(user["sub"])
     await TesseramentoService(db).rifiuta_verifica(tessera_id, verificatore.id if verificatore else None)
+
+
+@router.post("/verifiche/tessere-esterne/{tessera_esterna_id}/{esito}", status_code=status.HTTP_204_NO_CONTENT)
+async def verifica_tessera_esterna(
+    tessera_esterna_id: UUID,
+    esito: str = Path(..., pattern="^(conferma|rifiuta)$"),
+    user: dict = RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """Verifica di una tessera di un'altra ASD aggiornata da un iscritto community."""
+    verificatore = await SociRepository(db).get_by_keycloak_id(user["sub"])
+    await TesseramentoService(db).esito_tessera_esterna(
+        tessera_esterna_id,
+        "confermata" if esito == "conferma" else "rifiutata",
+        verificatore.id if verificatore else None,
+    )
 
 
 @router.get("/{socio_id}", response_model=SocioResponse)

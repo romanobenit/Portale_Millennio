@@ -58,6 +58,8 @@ class NFTService:
             select(Tessera).where(
                 Tessera.socio_id == socio_id,
                 Tessera.stato == "attiva",
+                # l'iscrizione community non è un tesseramento Millennio
+                Tessera.sport != "community",
             )
         )
         tessera = result.scalars().first()

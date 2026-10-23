@@ -66,6 +66,7 @@ async def _run_mint(acquisto_id: UUID) -> None:
                 select(Tessera).where(
                     Tessera.socio_id == acquisto.socio_id,
                     Tessera.stato == "attiva",
+                    Tessera.sport != "community",
                 )
             )
             tessera = tessera_result.scalars().first()
