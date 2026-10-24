@@ -25,6 +25,7 @@ export interface PrenotazioneEvento {
   stato: "in_attesa_pagamento" | "confermata" | "annullata" | "scaduta" | "rimborsata";
   importo_eur: string;
   pagato_in_sede: boolean;
+  pagato_con_credito: boolean;
   presenza: "presente" | "assente" | null;
   created_at: string;
 }
@@ -40,6 +41,7 @@ export interface MieiEventi {
   assenze: number;
   solo_online: boolean;
   abilitato_fino_al: string | null; // null = non abilitato ai campi
+  saldo_credito_eur: string; // credito interno disponibile
 }
 
 export interface EventoDirigenza extends EventoPubblico {
@@ -117,13 +119,20 @@ export async function fetchMieiEventi(): Promise<MieiEventi> {
 export async function prenotaEvento(
   eventoId: string,
   modalita: Modalita,
+  usaCredito = false,
 ): Promise<{ prenotazione: PrenotazioneEvento; stripe_checkout_url: string | null }> {
-  const { data } = await apiClient.post(`/eventi/${eventoId}/prenota`, { modalita });
+  const { data } = await apiClient.post(`/eventi/${eventoId}/prenota`, { modalita, usa_credito: usaCredito });
   return data;
 }
 
-export async function annullaPrenotazioneEvento(prenotazioneId: string): Promise<PrenotazioneEvento> {
-  const { data } = await apiClient.post<PrenotazioneEvento>(`/eventi/prenotazioni/${prenotazioneId}/annulla`);
+/** rimborso: per gli ingressi pagati con carta, sulla carta o in credito interno. */
+export async function annullaPrenotazioneEvento(
+  prenotazioneId: string,
+  rimborso: "carta" | "credito" = "carta",
+): Promise<PrenotazioneEvento> {
+  const { data } = await apiClient.post<PrenotazioneEvento>(`/eventi/prenotazioni/${prenotazioneId}/annulla`, {
+    rimborso,
+  });
   return data;
 }
 

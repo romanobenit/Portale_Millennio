@@ -72,6 +72,13 @@ class AggiungiPartecipanteRequest(BaseModel):
 
 class PrenotaEventoRequest(BaseModel):
     modalita: Literal["online", "in_sede"]
+    usa_credito: bool = False          # solo online: paga col credito interno invece che con Stripe
+
+
+class AnnullaPrenotazioneRequest(BaseModel):
+    # Per gli ingressi pagati con carta: rimborso sulla carta (Stripe) o in credito interno.
+    # Gli ingressi pagati col credito tornano sempre in credito.
+    rimborso: Literal["carta", "credito"] = "carta"
 
 
 # ─── Output ─────────────────────────────────────────────────────────────────
@@ -99,6 +106,7 @@ class PrenotazioneEventoResponse(BaseModel):
     stato: str
     importo_eur: Decimal
     pagato_in_sede: bool
+    pagato_con_credito: bool = False
     presenza: str | None
     created_at: datetime
 
@@ -118,6 +126,7 @@ class MieiEventiResponse(BaseModel):
     # Fino a quando può usare i campi (tessera Millennio o tessera esterna con
     # iscrizione community); None = non abilitato.
     abilitato_fino_al: date | None
+    saldo_credito_eur: Decimal = Decimal("0.00")
 
 
 class PrenotaEventoResponse(BaseModel):

@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     tessera_scadenza_mese: int = 6
     tessera_scadenza_giorno: int = 30
 
+    # Credito interno (registro, solo servizi dell'associazione). La ricarica online
+    # resta spenta finché non è confermata dal commercialista.
+    credito_ricarica_online_attiva: bool = False
+    credito_ricarica_min_eur: int = 10
+    credito_ricarica_max_eur: int = 200
+    credito_saldo_max_eur: int = 500
+
     # Periodo di vendita slot Palasirio (inclusivo)
     calendario_inizio: str = "2027-01-01"
     calendario_fine: str = "2042-12-31"

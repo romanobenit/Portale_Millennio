@@ -11,6 +11,7 @@ from models.socio import Socio
 from modules.eventi.service import EventiService
 from schemas.eventi import (
     AggiungiPartecipanteRequest,
+    AnnullaPrenotazioneRequest,
     EventoCreate,
     EventoDettaglioResponse,
     EventoDirigenzaResponse,
@@ -59,17 +60,19 @@ async def prenota_evento(
     db: AsyncSession = Depends(get_db, scope="function"),
 ):
     socio = await _socio_corrente(user, db)
-    return await EventiService(db).prenota(socio, evento_id, data.modalita)
+    return await EventiService(db).prenota(socio, evento_id, data.modalita, usa_credito=data.usa_credito)
 
 
 @router.post("/prenotazioni/{prenotazione_id}/annulla", response_model=PrenotazioneEventoResponse)
 async def annulla_prenotazione(
     prenotazione_id: UUID,
+    data: AnnullaPrenotazioneRequest | None = None,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db, scope="function"),
 ):
     socio = await _socio_corrente(user, db)
-    return await EventiService(db).annulla(socio.id, prenotazione_id)
+    rimborso = data.rimborso if data else "carta"
+    return await EventiService(db).annulla(socio.id, prenotazione_id, rimborso=rimborso)
 
 
 @router.post("/{evento_id}/lista-attesa", status_code=status.HTTP_204_NO_CONTENT)

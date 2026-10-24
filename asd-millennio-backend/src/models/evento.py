@@ -68,6 +68,7 @@ class PrenotazioneEvento(Base):
     stato = Column(StatoPrenotazioneEvento, nullable=False)
     importo_eur = Column(Numeric(8, 2), nullable=False)
     pagato_in_sede = Column(Boolean, nullable=False, default=False)
+    pagato_con_credito = Column(Boolean, nullable=False, default=False)
     presenza = Column(PresenzaEvento, nullable=True)
     presenza_segnata_at = Column(DateTime(timezone=True), nullable=True)
     inserita_da_staff = Column(Boolean, nullable=False, default=False)

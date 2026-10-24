@@ -76,10 +76,12 @@ from modules.soci.tessere_router import router as tessere_router
 from modules.calendario.router import router as calendario_router
 from modules.nft.router import router as nft_router
 from modules.dirigenza.router import router as dirigenza_router
-from modules.campi.router import router as campi_router
-from modules.dirigenza.campi_router import router as dirigenza_campi_router
 from modules.eventi.router import dirigenza_router as dirigenza_eventi_router
+from modules.credito.router import dirigenza_router as dirigenza_credito_router
+from modules.credito.router import router as credito_router
 from modules.eventi.router import router as eventi_router
+from modules.pickleball.router import dirigenza_router as dirigenza_pickleball_router
+from modules.pickleball.router import router as pickleball_router
 from modules.webhooks.stripe_handler import router as webhook_router
 
 PREFIX = "/api/v1"
@@ -89,10 +91,12 @@ app.include_router(tessere_router, prefix=PREFIX)
 app.include_router(calendario_router, prefix=PREFIX)
 app.include_router(nft_router, prefix=PREFIX)
 app.include_router(dirigenza_router, prefix=PREFIX)
-app.include_router(campi_router, prefix=PREFIX)
-app.include_router(dirigenza_campi_router, prefix=PREFIX)
 app.include_router(eventi_router, prefix=PREFIX)
 app.include_router(dirigenza_eventi_router, prefix=PREFIX)
+app.include_router(pickleball_router, prefix=PREFIX)
+app.include_router(dirigenza_pickleball_router, prefix=PREFIX)
+app.include_router(credito_router, prefix=PREFIX)
+app.include_router(dirigenza_credito_router, prefix=PREFIX)
 app.include_router(webhook_router, prefix=PREFIX)
 
 

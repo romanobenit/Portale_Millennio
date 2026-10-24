@@ -67,13 +67,14 @@ async def invia_posto_libero(*, to: str, nome: str, evento) -> bool:
     return await _invia(to, "Si è liberato un posto al Palasirio", _layout("Posto disponibile", corpo))
 
 
-async def invia_evento_annullato(*, to: str, nome: str, evento, rimborso: bool) -> bool:
+async def invia_evento_annullato(*, to: str, nome: str, evento, rimborso: bool, in_credito: bool = False) -> bool:
     desc = html.escape(descrivi_evento(evento))
-    nota = (
-        "Riceverai il rimborso dell'importo pagato online sullo stesso metodo di pagamento."
-        if rimborso
-        else "Non è dovuto alcun pagamento."
-    )
+    if in_credito:
+        nota = "L'importo pagato col credito ti è stato restituito sul credito della tua area soci."
+    elif rimborso:
+        nota = "Riceverai il rimborso dell'importo pagato online sullo stesso metodo di pagamento."
+    else:
+        nota = "Non è dovuto alcun pagamento."
     corpo = (
         f'<p style="line-height:1.6">Ciao {html.escape(nome)},<br>'
         f"l'evento <strong>{desc}</strong> è stato annullato dalla dirigenza.</p>"
