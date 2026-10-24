@@ -26,6 +26,7 @@ from schemas.tesseramento import (
     TesseraEsternaCreate,
     TesseraEsternaResponse,
     TesseramentoDaVerificare,
+    ImportTesseratiResponse,
     TesseramentoInSedeRequest,
     TesseramentoInSedeResponse,
     TesseramentoRequest,
@@ -92,6 +93,22 @@ async def tesseramento_in_sede(
 ):
     """La dirigenza tessera una persona in sede: quota pagata sul posto, tessera subito attiva."""
     return await TesseramentoService(db).tesseramento_in_sede(data, user["sub"])
+
+
+@router.post("/tesseramento-in-sede/import", response_model=ImportTesseratiResponse)
+async def importa_tesserati_in_sede(
+    file: UploadFile = File(...),
+    categoria: str = Form(..., pattern="^(volley|badminton|kung_fu|pickleball|sostenitore)$"),
+    consensi_firmati: bool = Form(False),
+    conferma: bool = Form(False),
+    user: dict = RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """Tesseramento in sede da file CSV: anteprima (conferma=false) o importazione."""
+    content = await file.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File troppo grande (massimo 2 MB).")
+    return await TesseramentoService(db).importa_in_sede(content, categoria, consensi_firmati, conferma, user["sub"])
 
 
 @router.get("/me", response_model=SocioResponse)

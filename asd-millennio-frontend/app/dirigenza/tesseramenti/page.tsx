@@ -7,6 +7,7 @@ import {
   TesseramentoDaVerificare, Tesserato,
 } from "@/lib/api/tesseramento";
 import { TesseramentoInSede } from "@/components/soci/TesseramentoInSede";
+import { ImportaTesserati } from "@/components/soci/ImportaTesserati";
 import toast from "react-hot-toast";
 
 const CAT_LABEL: Record<string, string> = {
@@ -60,6 +61,7 @@ export default function VerificheTesseramentiPage() {
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroCertificato, setFiltroCertificato] = useState<"" | StatoCertificato>("");
   const [mostraInSede, setMostraInSede] = useState(false);
+  const [mostraImport, setMostraImport] = useState(false);
 
   const carica = async () => {
     try { setItems(await fetchVerifiche()); }
@@ -104,7 +106,7 @@ export default function VerificheTesseramentiPage() {
       else if (tipo === "conferma") await confermaVerifica(id);
       else await rifiutaVerifica(id);
       toast.success(tipo === "conferma" ? "Confermato." : "Rifiutato.");
-      await carica();
+      await Promise.all([carica(), caricaTesserati()]);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally { setBusy(null); }
@@ -116,13 +118,26 @@ export default function VerificheTesseramentiPage() {
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-xl font-bold text-gray-900">Tesseramenti</h1>
-        <button
-          onClick={() => setMostraInSede((v) => !v)}
-          className="self-start whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
-        >
-          {mostraInSede ? "Chiudi" : "+ Tessera in sede"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setMostraImport((v) => !v)}
+            className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+          >
+            {mostraImport ? "Chiudi importazione" : "Importa da file"}
+          </button>
+          <button
+            onClick={() => setMostraInSede((v) => !v)}
+            className="whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+          >
+            {mostraInSede ? "Chiudi" : "+ Tessera in sede"}
+          </button>
+        </div>
       </div>
+      {mostraImport && (
+        <div className="mb-8">
+          <ImportaTesserati onFatto={caricaTesserati} />
+        </div>
+      )}
       {mostraInSede && (
         <div className="mb-8">
           <TesseramentoInSede onFatto={caricaTesserati} />
