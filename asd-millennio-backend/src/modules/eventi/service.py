@@ -16,6 +16,7 @@ from models.evento import EventoCampo, ListaAttesaEvento, PrenotazioneEvento
 from models.socio import Socio
 from models.tessera import Tessera
 from models.tessera_esterna import TesseraEsterna
+from modules.credito.service import CreditoService
 from modules.eventi import email as eventi_email
 from schemas.eventi import (
     EventoCreate,
@@ -324,15 +325,17 @@ class EventiService:
     # ─── socio ──────────────────────────────────────────────────────────────
 
     async def prenota(
-        self, socio: Socio, evento_id: UUID, modalita: str, *, da_staff: bool = False
+        self, socio: Socio, evento_id: UUID, modalita: str, *, da_staff: bool = False, usa_credito: bool = False
     ) -> PrenotaEventoResponse:
+        if usa_credito and (modalita != "online" or da_staff):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Il credito si usa solo per pagare online")
         ev = await self._evento_per_update(evento_id)
         self._verifica_prenotabile(ev)
         await self._scadi_lock(evento_id=ev.id)
 
         esistente = await self._prenotazione_attiva(ev.id, socio.id)
         if esistente:
-            if esistente.stato == "in_attesa_pagamento" and modalita == "online" and not da_staff:
+            if esistente.stato == "in_attesa_pagamento" and modalita == "online" and not da_staff and not usa_credito:
                 url = await self._url_sessione_aperta(esistente.stripe_session_id)
                 if url:
                     return PrenotaEventoResponse(
@@ -380,6 +383,21 @@ class EventiService:
             await self.db.flush()
             await self.db.refresh(pren)
             logger.info("Prenotazione evento in sede: evento=%s prenotazione=%s", ev.id, pren.id)
+            return PrenotaEventoResponse(prenotazione=PrenotazioneEventoResponse.model_validate(pren))
+
+        if usa_credito and Decimal(ev.prezzo_eur) > 0:
+            pren = PrenotazioneEvento(
+                evento_id=ev.id, socio_id=socio.id, modalita="online", stato="confermata",
+                importo_eur=ev.prezzo_eur, pagato_con_credito=True,
+            )
+            await self._inserisci(pren)
+            await CreditoService(self.db).addebita_evento(
+                socio.id, pren.id, Decimal(ev.prezzo_eur), eventi_email.descrivi_evento(ev)
+            )
+            await self._rimuovi_da_lista_attesa(ev.id, socio.id)
+            await self.db.flush()
+            await self.db.refresh(pren)
+            logger.info("Prenotazione evento pagata col credito: evento=%s prenotazione=%s", ev.id, pren.id)
             return PrenotaEventoResponse(prenotazione=PrenotazioneEventoResponse.model_validate(pren))
 
         if Decimal(ev.prezzo_eur) == 0:
@@ -522,7 +540,14 @@ class EventiService:
         if era_confermata:
             await self._notifica_posto_libero(ev)
 
-    async def annulla(self, socio_id: UUID, prenotazione_id: UUID) -> PrenotazioneEventoResponse:
+    async def _rimborsa_in_credito(self, pren: PrenotazioneEvento, ev: EventoCampo, motivo: str) -> None:
+        await CreditoService(self.db).rimborsa_evento(
+            pren.socio_id, pren.id, Decimal(pren.importo_eur), f"{motivo}: {eventi_email.descrivi_evento(ev)}"
+        )
+
+    async def annulla(
+        self, socio_id: UUID, prenotazione_id: UUID, *, rimborso: str = "carta"
+    ) -> PrenotazioneEventoResponse:
         pren = (
             await self.db.execute(
                 select(PrenotazioneEvento).where(
@@ -544,7 +569,12 @@ class EventiService:
                     status.HTTP_409_CONFLICT,
                     detail="Si può annullare solo entro il giorno prima dell'evento",
                 )
-            if pren.modalita == "online" and pren.stripe_payment_intent_id:
+            if pren.pagato_con_credito or (
+                rimborso == "credito" and pren.modalita == "online" and pren.stripe_payment_intent_id
+            ):
+                await self._rimborsa_in_credito(pren, ev, "Annullamento")
+                pren.stato = "rimborsata"
+            elif pren.modalita == "online" and pren.stripe_payment_intent_id:
                 await self._rimborsa(pren)
                 pren.stato = "rimborsata"
             else:
@@ -621,6 +651,7 @@ class EventiService:
             assenze=assenze,
             solo_online=solo_online(assenze),
             abilitato_fino_al=(await self._abilitati_fino_al([socio.id]))[socio.id],
+            saldo_credito_eur=await CreditoService(self.db).saldo(socio.id),
         )
 
     # ─── dirigenza ──────────────────────────────────────────────────────────
@@ -669,24 +700,29 @@ class EventiService:
                 .with_for_update(of=PrenotazioneEvento)
             )
         ).all()
-        da_avvisare: list[tuple[Socio, bool]] = []
+        da_avvisare: list[tuple[Socio, bool, bool]] = []
         for pren, socio in rows:
             if pren.stato == "in_attesa_pagamento":
                 await self._chiudi_sessione_stripe(pren.stripe_session_id)
                 pren.stato = "annullata"
                 continue
-            rimborso = pren.modalita == "online" and bool(pren.stripe_payment_intent_id)
-            if rimborso:
+            rimborso = pren.pagato_con_credito or (pren.modalita == "online" and bool(pren.stripe_payment_intent_id))
+            if pren.pagato_con_credito:
+                await self._rimborsa_in_credito(pren, ev, "Evento annullato")
+                pren.stato = "rimborsata"
+            elif rimborso:
                 await self._rimborsa(pren)
                 pren.stato = "rimborsata"
             else:
                 pren.stato = "annullata"
-            da_avvisare.append((socio, rimborso))
+            da_avvisare.append((socio, rimborso, pren.pagato_con_credito))
         ev.stato = "annullato"
         await self.db.execute(delete(ListaAttesaEvento).where(ListaAttesaEvento.evento_id == ev.id))
         await self.db.flush()
-        for socio, rimborso in da_avvisare:
-            await eventi_email.invia_evento_annullato(to=socio.email, nome=socio.nome, evento=ev, rimborso=rimborso)
+        for socio, rimborso, in_credito in da_avvisare:
+            await eventi_email.invia_evento_annullato(
+                to=socio.email, nome=socio.nome, evento=ev, rimborso=rimborso, in_credito=in_credito
+            )
         logger.info("Evento %s annullato: %s partecipanti avvisati", ev.id, len(da_avvisare))
         await self.db.refresh(ev)
         return self._dirigenza(ev, (await self._conteggi([ev.id]))[ev.id])

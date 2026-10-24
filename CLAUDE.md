@@ -475,13 +475,17 @@ nel database solo per lo storico (nessun modello ORM le usa più).
   30). Doppia verifica webhook + `Session.retrieve`; un pagamento arrivato dopo il rilascio del posto viene
   confermato solo se c'è ancora posto, altrimenti rimborsato.
 - **Pago in sede**: stessi abilitati, purché con meno di **2 assenze**.
-- **Annullamento** fino alla fine del giorno prima (Europe/Rome). Online → **rimborso Stripe automatico**.
+- **Annullamento** fino alla fine del giorno prima (Europe/Rome). Online → **rimborso Stripe automatico**,
+  oppure, a scelta del socio, **in credito interno**; pagato col credito → torna sempre in credito.
+- **Pagamento col credito interno** (`usa_credito=true`, solo online): prenotazione subito confermata,
+  `prenotazioni_evento.pagato_con_credito=true`, addebito nel registro del credito (vedi Credito interno).
 - **Assenze**: le segna la dirigenza ("non presentato", solo su prenotazioni in sede, solo da inizio evento).
   Dopo 2 → solo online, finché la dirigenza non le **azzera** (`soci.assenze_azzerate_at`).
 - **Posti massimi** per evento; contatore = prenotazioni confermate + `presenze_manuali` (correzione della
   dirigenza per chi entra senza prenotare). Evento pieno → **lista d'attesa**; quando si libera un posto
   l'email va a **tutta** la lista e il posto va a chi conferma per primo.
-- Annullamento di un evento da parte della dirigenza → rimborso di tutti gli online + email ai partecipanti.
+- Annullamento di un evento da parte della dirigenza → rimborso di tutti gli online (Stripe, o in credito per
+  chi ha pagato col credito) + email ai partecipanti.
 - Home pubblica: evento più vicino in evidenza + elenco dei successivi, ciascuno col contatore.
 
 **Endpoint:** `GET /eventi` (pubblico), `GET /eventi/mie`, `POST /eventi/{id}/prenota`,
@@ -503,6 +507,49 @@ duplicati nel file segnalati, max 500 righe / 2 MB. Due passaggi: **anteprima** 
 in un **savepoint** (annullato in anteprima): socio esistente per CF → solo tessera, altrimenti nuovo socio;
 stesse regole (CF col checksum, solo maggiorenni, una tessera per categoria e anno). Le righe con errore sono
 saltate, il resto viene importato; reimportare lo stesso file non crea doppioni.
+
+---
+
+### Estensioni post-MVP già realizzate (Ottobre 2026)
+
+Decise esplicitamente dal team dopo l'MVP. **Non** sono la "Flussocrazia Civica" né M04-STD: restano fuori
+scope community social, moneta della community, trasferimenti fra soci e prelievi.
+
+**Pickleball — classifica Elo del club** (`modules/pickleball/`, tabelle `partite_pickleball`,
+`partite_pickleball_giocatori`, `rating_pickleball`, `profili_atleta`):
+- Elo **interno** (non è DUPR, che è proprietario): parte da 1200, K=40 nelle prime 10 partite (punteggio
+  "provvisorio") poi K=24; nel doppio conta la media della coppia e la variazione va a entrambi; conta solo
+  vittoria/sconfitta. **Classifiche separate** singolo/doppio. Game validi: almeno 11 punti, 2 di scarto.
+- Partite registrate dai soci **abilitati ai campi** (il socio è sempre nella squadra A): contano solo dopo
+  la **conferma di un avversario**, che può anche **contestarle**; chi le ha inserite può ritirarle finché non
+  sono confermate. La **dirigenza/staff** inserisce i risultati dei **tornei** (confermati subito), risolve le
+  contestate e può annullare anche partite confermate.
+- La classifica è **ricalcolata da zero** rigiocando in ordine (data, conferma) tutte le partite confermate
+  del formato, sotto advisory lock: `rating_prima`/`rating_dopo` di ogni partita sono derivati.
+- Classifica dei soci (autenticati): nomi abbreviati "Mario R.", **esclusi i minori** e chi ha tolto
+  `visibile_in_classifica`. La dirigenza vede la classifica completa con i nomi per esteso.
+- Profilo atleta: obiettivi (punteggio singolo/doppio, partite al mese) e **DUPR dichiarato** dal socio
+  (solo mostrato accanto all'Elo, mai calcolato). Dashboard socio `/dashboard/pickleball`, dirigenza
+  `/dirigenza/pickleball`.
+- Endpoint: `/pickleball/{classifica,me,me/profilo,giocatori,partite,partite/{id}/conferma|contesta}`;
+  dirigenza sotto `/dirigenza/pickleball` (dashboard, classifica completa, partite, inserimento, conferma/annulla).
+
+**Credito interno** (`modules/credito/`, tabella `movimenti_credito`): un **registro**, non una moneta.
+- Si usa **solo per servizi dell'associazione** (per ora gli ingressi agli eventi). **Niente trasferimenti
+  fra soci, niente prelievi, nessun circuito esterno**: non aggiungerli senza verifica normativa e decisione
+  esplicita della dirigenza.
+- Movimenti (importo con segno, `saldo_dopo_eur`): `ricarica_sede`, `accredito` e `storno` (dirigenza, con
+  causale obbligatoria per accredito/storno), `ricarica_online` (Stripe), `pagamento_evento`,
+  `rimborso_evento`. Il registro è **immutabile** (trigger su UPDATE/DELETE): si corregge con uno storno.
+- Saldo mai negativo (advisory lock per socio); tetto `CREDITO_SALDO_MAX_EUR` sulle ricariche. Unica eccezione:
+  il rimborso Stripe di una ricarica (webhook `charge.refunded`) storna comunque quanto rimborsato.
+- **Ricarica online disattivata** per default (`CREDITO_RICARICA_ONLINE_ATTIVA=false`) in attesa della
+  verifica del commercialista; quando attiva: Stripe Checkout `metadata.tipo=ricarica_credito`, movimento
+  registrato **solo** al `checkout.session.completed` con doppia verifica e importo letto da Stripe,
+  idempotente su `stripe_session_id`.
+- Pagine: `/dashboard/credito` (saldo, movimenti, ricarica) e `/dirigenza/credito` (totale in circolo,
+  ultimi 30 giorni, ricerca socio, ricariche in sede/accrediti/storni). Endpoint `/credito/{me,ricarica}` e
+  `/dirigenza/credito/{riepilogo,soci,soci/{id},soci/{id}/movimenti}` (solo `dirigenza`).
 
 ---
 
@@ -841,6 +888,12 @@ TESSERA_SCADENZA_GIORNO=30
 CALENDARIO_INIZIO=2027-01-01
 CALENDARIO_FINE=2042-12-31
 
+# Credito interno (ricarica online spenta finché non la verifica il commercialista)
+CREDITO_RICARICA_ONLINE_ATTIVA=false
+CREDITO_RICARICA_MIN_EUR=10
+CREDITO_RICARICA_MAX_EUR=200
+CREDITO_SALDO_MAX_EUR=500
+
 # Pricing — tariffe base (override del seed DB, usate solo al primo avvio)
 TARIFFA_BASE_NOTTE=15
 TARIFFA_BASE_MATTINA=20
@@ -999,4 +1052,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.4 (importazione tesserati da file)*
+*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.5 (classifica pickleball, credito interno)*

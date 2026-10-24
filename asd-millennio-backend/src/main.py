@@ -77,6 +77,8 @@ from modules.calendario.router import router as calendario_router
 from modules.nft.router import router as nft_router
 from modules.dirigenza.router import router as dirigenza_router
 from modules.eventi.router import dirigenza_router as dirigenza_eventi_router
+from modules.credito.router import dirigenza_router as dirigenza_credito_router
+from modules.credito.router import router as credito_router
 from modules.eventi.router import router as eventi_router
 from modules.pickleball.router import dirigenza_router as dirigenza_pickleball_router
 from modules.pickleball.router import router as pickleball_router
@@ -93,6 +95,8 @@ app.include_router(eventi_router, prefix=PREFIX)
 app.include_router(dirigenza_eventi_router, prefix=PREFIX)
 app.include_router(pickleball_router, prefix=PREFIX)
 app.include_router(dirigenza_pickleball_router, prefix=PREFIX)
+app.include_router(credito_router, prefix=PREFIX)
+app.include_router(dirigenza_credito_router, prefix=PREFIX)
 app.include_router(webhook_router, prefix=PREFIX)
 
 

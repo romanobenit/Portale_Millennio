@@ -77,6 +77,9 @@ async def stripe_webhook(
         elif tipo == "tessera":
             from modules.soci.tesseramento_service import TesseramentoService
             await TesseramentoService(db).conferma_pagamento_tessera(session_id)
+        elif tipo == "ricarica_credito":
+            from modules.credito.service import CreditoService
+            await CreditoService(db).conferma_ricarica(session_id)
         else:
             acq_to_mint = await nft_service.conferma_pagamento(session_id)
 
@@ -91,6 +94,8 @@ async def stripe_webhook(
         elif tipo_scaduto == "evento":
             from modules.eventi.service import EventiService
             await EventiService(db).gestisci_sessione_scaduta(expired_session["id"])
+        elif tipo_scaduto == "ricarica_credito":
+            pass  # la ricarica si registra solo a pagamento avvenuto: nulla da annullare
         else:
             await nft_service.gestisci_sessione_scaduta(expired_session["id"])
 
@@ -104,7 +109,9 @@ async def stripe_webhook(
         pagamento_tessera_id_meta = pi_meta.get("pagamento_tessera_id")
         acquisto_id_meta = pi_meta.get("acquisto_id")
 
-        if pi_meta.get("tipo") == "evento":
+        if pi_meta.get("tipo") == "ricarica_credito":
+            pass  # nessun movimento finché il pagamento non va a buon fine
+        elif pi_meta.get("tipo") == "evento":
             # Il posto resta trattenuto fino alla scadenza della sessione: un tentativo
             # di carta fallito non lo rilascia, se ne occupa checkout.session.expired.
             pass
@@ -164,6 +171,10 @@ async def stripe_webhook(
         if pi_id_from_charge:
             from modules.eventi.service import EventiService
             await EventiService(db).segna_rimborso_esterno(pi_id_from_charge)
+            from modules.credito.service import CreditoService
+            await CreditoService(db).segna_rimborso_ricarica(
+                pi_id_from_charge, charge_obj.to_dict().get("amount_refunded") or 0
+            )
         from models.acquisto_nft import AcquistoNFT, AcquistoNFTSlot
         from models.slot_calendario import SlotCalendario
         result = await db.execute(

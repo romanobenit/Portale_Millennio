@@ -3,6 +3,7 @@ from models.consenso import Consenso
 from models.documento_socio import DocumentoSocio
 from models.evento import EventoCampo, ListaAttesaEvento, PrenotazioneEvento
 from models.pagamento_tessera import PagamentoTessera
+from models.credito import MovimentoCredito
 from models.pickleball import GiocatorePartita, PartitaPickleball, ProfiloAtleta, RatingPickleball
 from models.pricing_rule import PricingRule
 from models.quota_tessera import QuotaTessera
@@ -33,6 +34,7 @@ __all__ = [
     "TesseraEsterna",
     "PartitaPickleball",
     "GiocatorePartita",
+    "MovimentoCredito",
     "RatingPickleball",
     "ProfiloAtleta",
 ]

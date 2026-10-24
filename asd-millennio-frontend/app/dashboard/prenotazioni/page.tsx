@@ -31,6 +31,7 @@ const btnSecondario =
 
 function statoPrenotazione(p: MiaPrenotazione): { label: string; classes: string } {
   if (p.stato === "in_attesa_pagamento") return { label: "Pagamento da completare", classes: "bg-yellow-100 text-yellow-800" };
+  if (p.pagato_con_credito) return { label: "Pagata col credito", classes: "bg-green-100 text-green-800" };
   if (p.modalita === "in_sede") {
     return p.pagato_in_sede
       ? { label: "Pagata in sede", classes: "bg-green-100 text-green-800" }
@@ -48,6 +49,7 @@ export default function PrenotaEventiPage() {
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [daAnnullare, setDaAnnullare] = useState<MiaPrenotazione | null>(null);
 
   const carica = useCallback(async () => {
     try {
@@ -78,6 +80,12 @@ export default function PrenotaEventiPage() {
     }
   };
 
+  const pagaConCredito = (ev: EventoPubblico) =>
+    esegui(`${ev.id}-credito`, async () => {
+      await prenotaEvento(ev.id, "online", true);
+      toast.success("Prenotazione confermata: l'ingresso è stato pagato col tuo credito.");
+    });
+
   const prenota = (ev: EventoPubblico, modalita: Modalita) =>
     esegui(`${ev.id}-${modalita}`, async () => {
       const res = await prenotaEvento(ev.id, modalita);
@@ -98,16 +106,32 @@ export default function PrenotaEventiPage() {
       if (res.stripe_checkout_url) window.location.href = res.stripe_checkout_url;
     });
 
+  const pagataConCarta = (p: MiaPrenotazione) =>
+    p.stato === "confermata" && p.modalita === "online" && !p.pagato_con_credito && Number(p.importo_eur) > 0;
+
+  const eseguiAnnullamento = (p: MiaPrenotazione, rimborso: "carta" | "credito" = "carta") => {
+    setDaAnnullare(null);
+    esegui(`del-${p.id}`, async () => {
+      await annullaPrenotazioneEvento(p.id, rimborso);
+      toast.success(
+        p.pagato_con_credito || rimborso === "credito"
+          ? "Prenotazione annullata: l'importo è tornato sul tuo credito."
+          : "Prenotazione annullata.",
+      );
+    });
+  };
+
   const annulla = (p: MiaPrenotazione) => {
+    if (pagataConCarta(p)) {
+      setDaAnnullare(p); // si sceglie dove ricevere il rimborso
+      return;
+    }
     const msg =
-      p.stato === "confermata" && p.modalita === "online" && Number(p.importo_eur) > 0
-        ? "Annullare la prenotazione? Riceverai il rimborso dell'importo pagato."
+      p.stato === "confermata" && p.pagato_con_credito
+        ? "Annullare la prenotazione? L'importo tornerà sul tuo credito."
         : "Annullare la prenotazione?";
     if (!window.confirm(msg)) return;
-    esegui(`del-${p.id}`, async () => {
-      await annullaPrenotazioneEvento(p.id);
-      toast.success("Prenotazione annullata.");
-    });
+    eseguiAnnullamento(p);
   };
 
   const listaAttesa = (ev: EventoPubblico, entra: boolean) =>
@@ -125,6 +149,7 @@ export default function PrenotaEventiPage() {
   const prenotatoPer = new Map((miei?.prenotazioni ?? []).map((p) => [p.evento_id, p]));
   const inAttesa = new Set(miei?.lista_attesa ?? []);
   const abilitatoFinoAl = miei?.abilitato_fino_al ?? null;
+  const saldo = Number(miei?.saldo_credito_eur ?? 0);
 
   return (
     <div className="space-y-8">
@@ -146,6 +171,17 @@ export default function PrenotaEventiPage() {
         </div>
       )}
       {errore && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{errore}</div>}
+
+      {saldo > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <span>
+            Hai <strong>{formattaPrezzo(saldo)}</strong> di credito: puoi usarlo per pagare gli ingressi.
+          </span>
+          <Link href="/dashboard/credito" className="font-medium text-blue-700 hover:underline">
+            Il mio credito
+          </Link>
+        </div>
+      )}
 
       {miei?.solo_online && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -198,7 +234,8 @@ export default function PrenotaEventiPage() {
             })}
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Si può annullare fino al giorno prima dell&apos;evento; chi ha pagato online riceve il rimborso.
+            Si può annullare fino al giorno prima dell&apos;evento; chi ha pagato online riceve il rimborso
+            (sulla carta o, se preferisce, sul credito), chi ha pagato col credito lo ritrova sul credito.
           </p>
         </section>
       )}
@@ -267,6 +304,11 @@ export default function PrenotaEventiPage() {
                         <button onClick={() => prenota(ev, "online")} disabled={!!busy} className={btnPrimario}>
                           {busy === `${ev.id}-online` ? "Attendi…" : `Paga online · ${formattaPrezzo(ev.prezzo_eur)}`}
                         </button>
+                        {Number(ev.prezzo_eur) > 0 && saldo >= Number(ev.prezzo_eur) && (
+                          <button onClick={() => pagaConCredito(ev)} disabled={!!busy} className={btnSecondario}>
+                            {busy === `${ev.id}-credito` ? "Attendi…" : "Paga col credito"}
+                          </button>
+                        )}
                         <button
                           onClick={() => prenota(ev, "in_sede")}
                           disabled={!!busy || !!miei?.solo_online}
@@ -286,6 +328,29 @@ export default function PrenotaEventiPage() {
           </div>
         )}
       </section>
+
+      {daAnnullare && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog" aria-modal="true" aria-labelledby="titolo-annulla">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h3 id="titolo-annulla" className="text-lg font-semibold text-gray-900">Annullare la prenotazione?</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Hai pagato {formattaPrezzo(daAnnullare.importo_eur)} con carta. Dove vuoi ricevere il rimborso?
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button onClick={() => eseguiAnnullamento(daAnnullare, "carta")} className={btnPrimario}>
+                Rimborso sulla carta
+              </button>
+              <button onClick={() => eseguiAnnullamento(daAnnullare, "credito")} className={btnSecondario}>
+                Rimborso sul credito (subito disponibile)
+              </button>
+              <button onClick={() => setDaAnnullare(null)} className="py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                Non annullare
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
