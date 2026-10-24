@@ -265,6 +265,19 @@ updated_at                    TIMESTAMPTZ DEFAULT now()
   cifrato AES-256 dei documenti d'identità/tutela (`DocumentoSocio.tipo='certificato_medico'`). Alert email
   automatici 30/15/7 giorni prima della scadenza (Celery beat, `tasks/certificato_medico.py`); per i minori
   l'email va al **tutore** (l'email del minore è sintetica, non reale).
+- **Iscrizione community** (`Tessera.sport = 'community'`, prefisso `COM`): per chi ha già la tessera di
+  **un'altra ASD** (federazione o ente di promozione sportiva) e non vuole tesserarsi alla Millennio. Quota
+  decisa dalla dirigenza (`quote_tessera`, categoria `community`), pagata **una volta sola**; l'iscrizione
+  **non scade** (`data_scadenza` NULL). I dati della tessera esterna stanno in **`tessere_esterne`** (ente,
+  ASD + codice affiliazione facoltativo, numero, disciplina, **scadenza**, scansione cifrata
+  `DocumentoSocio.tipo='tessera_esterna'`, una riga per ogni aggiornamento). Ciò che scade è il **diritto a
+  usare i campi**: vale fino alla scadenza della tessera esterna (vedi Eventi campi). Verifica staff ibrida
+  come il tesseramento: la tessera esterna caricata con l'iscrizione segue l'esito dell'iscrizione; quelle
+  caricate dopo (rinnovi, da «Le mie tessere») abilitano subito e vanno in coda come
+  `rinnovo_tessera_esterna` (`POST /soci/verifiche/tessere-esterne/{id}/conferma|rifiuta`, nessun effetto
+  sulla quota). Endpoint socio: `POST|GET /soci/me/tessere-esterne` (`socio_id` per i minori, iscritti dal
+  tutore). Alert email 30/15/7 giorni prima della scadenza della tessera esterna (`tasks/tessera_esterna.py`,
+  solo per la tessera più recente). **Non** vale come tesseramento Millennio: niente acquisto NFT.
 - Alert automatici scadenza tessera: 30, 15, 7 giorni prima (email + notifica push) — **da implementare**,
   non ancora presente nel codice (solo il certificato medico ha già il proprio task Celery attivo, sopra)
 - Un socio può avere tessere per sport diversi nello stesso anno
@@ -449,10 +462,13 @@ l'**ingresso per tutta la durata** (arrivo e permanenza flessibili). Ha sostitui
 (`slot_template_campo` / `prenotazioni_campo`, modulo `campi`), le cui tabelle restano solo per lo storico.
 
 **Regole:**
-- **Online** (Stripe Checkout): qualunque utente registrato con profilo socio. Il posto resta trattenuto
-  31 min (= scadenza della sessione Stripe, minimo 30). Doppia verifica webhook + `Session.retrieve`; un
-  pagamento arrivato dopo il rilascio del posto viene confermato solo se c'è ancora posto, altrimenti rimborsato.
-- **Pago in sede**: solo soci con **tessera attiva** e meno di **2 assenze**.
+- **Chi può prenotare** (online e in sede): solo chi è **abilitato ai campi** alla **data dell'evento** —
+  tessera Millennio attiva non scaduta, oppure iscrizione community con una tessera esterna non rifiutata e
+  non scaduta (`fine_abilitazione` in `modules/eventi/service.py`). Chi ha solo l'account non prenota.
+- **Online** (Stripe Checkout): il posto resta trattenuto 31 min (= scadenza della sessione Stripe, minimo
+  30). Doppia verifica webhook + `Session.retrieve`; un pagamento arrivato dopo il rilascio del posto viene
+  confermato solo se c'è ancora posto, altrimenti rimborsato.
+- **Pago in sede**: stessi abilitati, purché con meno di **2 assenze**.
 - **Annullamento** fino alla fine del giorno prima (Europe/Rome). Online → **rimborso Stripe automatico**.
 - **Assenze**: le segna la dirigenza ("non presentato", solo su prenotazioni in sede, solo da inizio evento).
   Dopo 2 → solo online, finché la dirigenza non le **azzera** (`soci.assenze_azzerate_at`).
@@ -966,4 +982,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.2 (eventi campi al posto della prenotazione a ore; tesseramento in sede)*
+*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.3 (iscrizione community con tessera di un'altra ASD)*
