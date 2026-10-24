@@ -929,6 +929,83 @@ class TesseramentoService:
             categoria=tessera.sport, data_scadenza=tessera.data_scadenza,
         )
 
+    async def importa_in_sede(
+        self, content: bytes, categoria: str, consensi_firmati: bool, conferma: bool, operatore_kc_sub: str,
+    ):
+        """
+        Tesseramento in sede da file. Anteprima (conferma=False): ogni riga gira in un
+        savepoint annullato, così l'esito mostrato è quello reale senza scrivere nulla.
+        Importazione: le righe valide vengono salvate, quelle con errori saltate.
+        """
+        from pydantic import ValidationError
+        from modules.soci.import_tesserati import leggi_file
+        from schemas.tesseramento import (
+            AnagraficaInSede, EsitoImportRiga, ImportTesseratiResponse, TesseramentoInSedeRequest,
+        )
+
+        try:
+            righe = leggi_file(content)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        if conferma and not consensi_firmati:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Conferma che consensi e quote sono stati raccolti in sede.",
+            )
+
+        esiti: list = []
+        for r in righe:
+            base = dict(riga=r.riga, cognome=r.valori.get("cognome", ""), nome=r.valori.get("nome", ""))
+            if r.errore:
+                esiti.append(EsitoImportRiga(**base, esito="errore", messaggio=r.errore))
+                continue
+            sp = await self.db.begin_nested()
+            try:
+                esistente = await self.repo.get_by_cf(r.valori["codice_fiscale"])
+                tipo = "esistente" if esistente else "nuovo"
+                if esistente:
+                    req = TesseramentoInSedeRequest(socio_id=esistente.id, categoria=categoria, consensi_firmati=True)
+                else:
+                    req = TesseramentoInSedeRequest(
+                        anagrafica=AnagraficaInSede(**{
+                            k: r.valori.get(k)
+                            for k in ("nome", "cognome", "data_nascita", "codice_fiscale", "email", "telefono", "indirizzo")
+                        }),
+                        categoria=categoria,
+                        consensi_firmati=True,
+                    )
+                esito = await self.tesseramento_in_sede(req, operatore_kc_sub)
+                if conferma:
+                    await sp.commit()
+                else:
+                    await sp.rollback()
+                esiti.append(EsitoImportRiga(
+                    **base, esito=tipo,
+                    numero_tessera=esito.numero_tessera if conferma else None,
+                    messaggio="socio già registrato: aggiunta la tessera" if tipo == "esistente" else None,
+                ))
+            except HTTPException as e:
+                await sp.rollback()
+                esiti.append(EsitoImportRiga(**base, esito="errore", messaggio=str(e.detail)))
+            except ValidationError as e:
+                await sp.rollback()
+                campi = {str(err["loc"][-1]) for err in e.errors() if err.get("loc")}
+                esiti.append(EsitoImportRiga(
+                    **base, esito="errore",
+                    messaggio="email non valida" if "email" in campi else "dati non validi",
+                ))
+
+        if conferma:
+            await self.db.flush()
+            logger.info("Import tesserati in sede: %d righe, operatore %s", len(esiti), operatore_kc_sub)
+        return ImportTesseratiResponse(
+            importato=conferma,
+            righe=esiti,
+            nuovi=sum(e.esito == "nuovo" for e in esiti),
+            esistenti=sum(e.esito == "esistente" for e in esiti),
+            errori=sum(e.esito == "errore" for e in esiti),
+        )
+
     # ── quote (dirigenza) ──────────────────────────────────────────────────────
 
     async def lista_quote(self, anno_sportivo: str | None = None) -> list[QuotaTessera]:

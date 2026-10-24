@@ -256,6 +256,39 @@ export async function tesseramentoInSede(input: TesseramentoInSedeInput): Promis
   return data;
 }
 
+export interface EsitoImportRiga {
+  riga: number;
+  cognome: string;
+  nome: string;
+  esito: "nuovo" | "esistente" | "errore";
+  messaggio: string | null;
+  numero_tessera: string | null;
+}
+
+export interface ImportTesserati {
+  importato: boolean;
+  righe: EsitoImportRiga[];
+  nuovi: number;
+  esistenti: number;
+  errori: number;
+}
+
+export async function importaTesserati(
+  file: File,
+  categoria: string,
+  opzioni: { conferma: boolean; consensiFirmati: boolean },
+): Promise<ImportTesserati> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("categoria", categoria);
+  form.append("conferma", String(opzioni.conferma));
+  form.append("consensi_firmati", String(opzioni.consensiFirmati));
+  const { data } = await apiClient.post<ImportTesserati>("/soci/tesseramento-in-sede/import", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 export async function confermaVerifica(tesseraId: string): Promise<void> {
   await apiClient.post(`/soci/verifiche/${tesseraId}/conferma`);
 }

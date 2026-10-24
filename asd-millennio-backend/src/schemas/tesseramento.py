@@ -119,6 +119,23 @@ class TesseramentoInSedeRequest(BaseModel):
         return self
 
 
+class EsitoImportRiga(BaseModel):
+    riga: int
+    cognome: str
+    nome: str
+    esito: str  # nuovo | esistente | errore
+    messaggio: str | None = None
+    numero_tessera: str | None = None
+
+
+class ImportTesseratiResponse(BaseModel):
+    importato: bool
+    righe: list[EsitoImportRiga]
+    nuovi: int
+    esistenti: int
+    errori: int
+
+
 class TesseramentoInSedeResponse(BaseModel):
     socio_id: UUID
     nome: str
