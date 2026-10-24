@@ -125,7 +125,6 @@ class NFTService:
         unit_amount_cents = int(round(float(importo_eur) * 100))
         stripe_session = await asyncio.to_thread(
             stripe.checkout.Session.create,
-            payment_method_types=["card"],
             line_items=[
                 {
                     "price_data": {

@@ -445,7 +445,6 @@ class TesseramentoService:
         unit_amount = int(round(float(pagamento.importo_eur) * 100))
         return await asyncio.to_thread(
             stripe.checkout.Session.create,
-            payment_method_types=["card"],
             line_items=[{
                 "price_data": {
                     "currency": "eur",
