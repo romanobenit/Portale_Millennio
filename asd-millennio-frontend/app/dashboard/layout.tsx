@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/dashboard/miei-nft", label: "Il mio sostegno" },
   { href: "/dashboard/tessere", label: "Le mie tessere" },
   { href: "/dashboard/minori", label: "I miei minori" },
+  { href: "/dashboard/pickleball", label: "Pickleball" },
   { href: "/dashboard/prenotazioni", label: "Prenota presenza", highlight: true },
 ];
 
