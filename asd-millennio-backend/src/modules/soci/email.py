@@ -114,3 +114,57 @@ async def invia_alert_tessera_esterna(
     except Exception as e:  # noqa: BLE001
         logger.error("Errore invio alert tessera esterna: %s", e)
         return False
+
+
+async def invia_alert_scadenza_tessera(
+    *,
+    to: str,
+    nome: str,
+    giorni_mancanti: int,
+    scadenza: str,
+    tessere: list[tuple[str, str, str | None]],
+) -> bool:
+    """
+    Tessere Millennio in scadenza (30/15/7 giorni prima). `tessere`: (numero, categoria,
+    nome del tesserato se diverso dal destinatario, es. figlio minore). Mai solleva.
+    """
+    if not settings.resend_api_key:
+        logger.warning("RESEND_API_KEY non configurata: alert scadenza tessera non inviato.")
+        return False
+    righe = "".join(
+        f"<li>{numero} — {categoria}{f' ({chi})' if chi else ''}</li>" for numero, categoria, chi in tessere
+    )
+    link = f"{settings.app_url}/dashboard/tessere"
+    plurale = len(tessere) > 1
+    corpo = f"""\
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#111827">
+  <h2 style="color:#b45309;margin:0 0 4px">{"Le tessere scadono" if plurale else "La tessera scade"} tra {giorni_mancanti} giorni</h2>
+  <p style="color:#6b7280;margin:0 0 16px">ASD Millennio — scadenza {scadenza}</p>
+  <p style="line-height:1.6">Ciao {nome},<br>
+  {"queste tessere scadono" if plurale else "questa tessera scade"} il <strong>{scadenza}</strong>, a fine anno sportivo:</p>
+  <ul style="line-height:1.6">{righe}</ul>
+  <p style="line-height:1.6">Dopo la scadenza non sarà più possibile prenotare gli eventi al Palasirio.
+  Puoi rinnovare dall'area soci appena si apre il tesseramento per il nuovo anno sportivo:
+  <a href="{link}" style="color:#1d4ed8">vai a «Le mie tessere»</a>.</p>
+  <p style="font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;line-height:1.5">
+    Questo è un promemoria automatico, non serve rispondere a questa email.
+  </p>
+</div>"""
+    payload = {
+        "from": settings.email_from,
+        "to": [to],
+        "subject": f"{'Le tue tessere scadono' if plurale else 'La tua tessera scade'} tra {giorni_mancanti} giorni",
+        "html": corpo,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                RESEND_ENDPOINT, json=payload, headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            )
+        if resp.status_code >= 300:
+            logger.error("Invio alert scadenza tessera fallito: HTTP %s", resp.status_code)
+            return False
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error("Errore invio alert scadenza tessera: %s", e)
+        return False

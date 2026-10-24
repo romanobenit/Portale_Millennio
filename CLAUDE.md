@@ -278,8 +278,12 @@ updated_at                    TIMESTAMPTZ DEFAULT now()
   sulla quota). Endpoint socio: `POST|GET /soci/me/tessere-esterne` (`socio_id` per i minori, iscritti dal
   tutore). Alert email 30/15/7 giorni prima della scadenza della tessera esterna (`tasks/tessera_esterna.py`,
   solo per la tessera più recente). **Non** vale come tesseramento Millennio: niente acquisto NFT.
-- Alert automatici scadenza tessera: 30, 15, 7 giorni prima (email + notifica push) — **da implementare**,
-  non ancora presente nel codice (solo il certificato medico ha già il proprio task Celery attivo, sopra)
+- Alert automatici scadenza tessera: 30, 15, 7 giorni prima, via **email** (`tasks/tessera_scadenza.py`,
+  Celery beat 07:20). Un'email per destinatario con tutte le sue tessere in scadenza (il tutore riceve anche
+  quelle dei figli minori); nessun avviso per una categoria già rinnovata nell'anno sportivo successivo;
+  `community` esclusa (non scade). La **notifica push** prevista dal PRD non è implementata (manca
+  l'infrastruttura push). Il rinnovo anticipato è possibile solo dopo che `ANNO_SPORTIVO_CORRENTE` è passato
+  al nuovo anno (prima `avvia_tesseramento` trova già la tessera dell'anno in corso).
 - Un socio può avere tessere per sport diversi nello stesso anno
 - Scadenza tessera: sempre il **30 giugno** dell'anno sportivo corrente, indipendentemente
   dalla data di emissione. Anno sportivo corrente: `2026-2027` → scadenza `2027-06-30`.

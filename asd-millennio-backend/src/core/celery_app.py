@@ -9,7 +9,7 @@ celery_app = Celery(
     "millennio",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["tasks.mint", "tasks.tesseramento", "tasks.certificato_medico", "tasks.tessera_esterna"],
+    include=["tasks.mint", "tasks.tesseramento", "tasks.certificato_medico", "tasks.tessera_esterna", "tasks.tessera_scadenza"],
 )
 
 celery_app.conf.update(
@@ -45,6 +45,11 @@ celery_app.conf.update(
         "alert-scadenza-tessera-esterna": {
             "task": "tasks.tessera_esterna.alert_scadenza_tessera_esterna",
             "schedule": crontab(hour=7, minute=10),
+        },
+        # Alert scadenza tessera Millennio (30/15/7 giorni prima del 30 giugno).
+        "alert-scadenza-tessera": {
+            "task": "tasks.tessera_scadenza.alert_scadenza_tessera",
+            "schedule": crontab(hour=7, minute=20),
         },
     },
 )
