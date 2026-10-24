@@ -71,10 +71,7 @@ async def stripe_webhook(
         session_id = session["id"]
         # stripe.StripeObject (stripe-python >= 7) non supporta .get() — serve to_dict().
         tipo = (session.to_dict().get("metadata") or {}).get("tipo", "nft")
-        if tipo == "prenotazione_campo":
-            from modules.campi.service import CampiService
-            await CampiService(db).conferma_pagamento(session_id)
-        elif tipo == "evento":
+        if tipo == "evento":
             from modules.eventi.service import EventiService
             await EventiService(db).conferma_pagamento(session_id)
         elif tipo == "tessera":

@@ -464,7 +464,8 @@ GET /api/v1/calendario/riepilogo-selezione          → totale e dettaglio ore s
 Distinto dal calendario NFT: è l'uso quotidiano del Palasirio (pickleball/badminton). **Non si prenota a ore**:
 la dirigenza individua degli **eventi** (finestre di ~1h30–2h, `eventi_campo`) e chi partecipa paga
 l'**ingresso per tutta la durata** (arrivo e permanenza flessibili). Ha sostituito il vecchio sistema a ore
-(`slot_template_campo` / `prenotazioni_campo`, modulo `campi`), le cui tabelle restano solo per lo storico.
+(`slot_template_campo` / `prenotazioni_campo` / `campi_config`): il codice è stato rimosso, le tabelle restano
+nel database solo per lo storico (nessun modello ORM le usa più).
 
 **Regole:**
 - **Chi può prenotare** (online e in sede): solo chi è **abilitato ai campi** alla **data dell'evento** —
