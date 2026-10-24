@@ -290,7 +290,8 @@ updated_at                    TIMESTAMPTZ DEFAULT now()
   deve contenere un QR code che punta a `GET /api/v1/tessere/{id}/verifica` (endpoint pubblico).
   Il PDF viene salvato su storage e il link aggiornato in `pdf_url`.
 - Importazione massiva da CSV/Excel per migrazione dati iniziali:
-  endpoint `POST /api/soci/import` con validazione e report errori
+  endpoint `POST /api/v1/soci/import` (solo anagrafiche, nessuna tessera, nessuna UI). Per tesserare più
+  persone insieme si usa l'**importazione tesserati da file** (vedi Tesseramento in sede, sezione Eventi campi).
 
 **Consensi GDPR — entità `Consenso`:**
 
@@ -486,6 +487,17 @@ aggiunta partecipante in sede, ricerca soci, azzeramento assenze).
 **Tesseramento in sede** (`POST /soci/tesseramento-in-sede`, staff/dirigenza): socio nuovo o esistente
 (solo maggiorenni) + tessera **attiva e già verificata** in un'unica transazione; consensi registrati come
 `testo_versione='v1-cartaceo'`. Il pagamento della quota in sede non viene ancora registrato a sistema.
+
+**Importazione tesserati da file** (`POST /soci/tesseramento-in-sede/import`, staff/dirigenza; UI in
+Tesseramenti → «Importa da file»): CSV con una categoria per file (no `community`, che richiede la tessera
+esterna). Parser in `modules/soci/import_tesserati.py`: accetta il CSV di Excel (`;` o `,`, UTF-8/BOM o
+Windows-1252, date `gg/mm/aaaa` o ISO), intestazioni italiane con alias ("Data di nascita", "CF",
+"E-mail"…), colonne obbligatorie cognome/nome/data di nascita/codice fiscale/email, colonne extra ignorate,
+duplicati nel file segnalati, max 500 righe / 2 MB. Due passaggi: **anteprima** (`conferma=false`) ed
+**importazione** (`conferma=true`, richiede `consensi_firmati=true`). Ogni riga riusa `tesseramento_in_sede`
+in un **savepoint** (annullato in anteprima): socio esistente per CF → solo tessera, altrimenti nuovo socio;
+stesse regole (CF col checksum, solo maggiorenni, una tessera per categoria e anno). Le righe con errore sono
+saltate, il resto viene importato; reimportare lo stesso file non crea doppioni.
 
 ---
 
@@ -982,4 +994,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.3 (iscrizione community con tessera di un'altra ASD)*
+*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.4 (importazione tesserati da file)*
