@@ -407,7 +407,6 @@ class EventiService:
         try:
             session = await asyncio.to_thread(
                 stripe.checkout.Session.create,
-                payment_method_types=["card"],
                 mode="payment",
                 line_items=[{
                     "price_data": {
