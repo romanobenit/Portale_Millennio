@@ -32,6 +32,12 @@ export function TabellaClassifica({ righe, evidenzia }: Props) {
               <td className="py-2 pr-2 text-gray-500">{r.posizione}</td>
               <td className="py-2 pr-2">
                 {r.nome}
+                {r.inattivo && (
+                  <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+                    title="Nessuna partita negli ultimi mesi: non compare nella classifica dei soci">
+                    inattivo
+                  </span>
+                )}
                 {r.provvisorio && (
                   <span className="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500"
                     title="Meno di 10 partite: il punteggio si sta ancora assestando">

@@ -531,8 +531,32 @@ scope community social, moneta della community, trasferimenti fra soci e preliev
 - Profilo atleta: obiettivi (punteggio singolo/doppio, partite al mese) e **DUPR dichiarato** dal socio
   (solo mostrato accanto all'Elo, mai calcolato). Dashboard socio `/dashboard/pickleball`, dirigenza
   `/dirigenza/pickleball`.
-- Endpoint: `/pickleball/{classifica,me,me/profilo,giocatori,partite,partite/{id}/conferma|contesta}`;
-  dirigenza sotto `/dirigenza/pickleball` (dashboard, classifica completa, partite, inserimento, conferma/annulla).
+- **Tornei** (`tornei_pickleball`, livello sociale/open/federale, stagione = anno sportivo luglio→giugno): le
+  partite di torneo pesano `peso_torneo` (default ×1,5) nell'Elo. Risultati importati da **CSV** (una riga per
+  partita: categoria, fase, squadra A, squadra B con "/" per le coppie, punteggio dal lato A, vincitore solo per i
+  walkover "WO"; righe annullate saltate; anteprima + conferma; reimportare non duplica). Parser in
+  `modules/pickleball/import_risultati.py`; i nomi sono abbinati ai soci (poi agli ospiti), gli altri diventano
+  ospiti. **Walkover**: registrati ma non muovono l'Elo (`fuori_classifica`).
+- **Amichevoli**: oltre `amichevoli_max_settimana` (default 3) a settimana ISO contro lo stesso avversario non
+  contano (`fuori_classifica='limite amichevoli'`). Inattivo dopo `giorni_inattivita` (90): fuori dalla classifica
+  dei soci, il punteggio resta.
+- **Circuito tornei**: piazzamenti per categoria (`piazzamenti_torneo`) ricavati dalle partite in
+  `modules/pickleball/regole.py` (tabellone: vincitore/finalista/semifinalista/fase finale/partecipazione;
+  girone unico: classifica per vittorie e differenza punti; chi ha solo dato forfait non prende punti). La
+  dirigenza li corregge (`manuale`, anche "nessuno" = 0 punti): i ricalcoli non toccano le correzioni. Punti =
+  punti piazzamento (100/70/45/25/10) × livello (1/1,5/2), migliori 6 risultati della stagione, solo tornei
+  `concluso`. Tutti i parametri in `config_pickleball` (riga unica, dirigenza; salvare ricalcola l'Elo).
+- **Ospiti** (`giocatori_ospiti`): non soci incontrati nei tornei, dati minimi (nome, club; email solo se il
+  giocatore acconsente). Hanno un Elo di calcolo (`rating_ospiti_pickleball`), non compaiono in nessuna
+  classifica dei soci (la dirigenza li vede). Invito alla community via email (Resend); quando si iscrivono la
+  dirigenza li **collega** al socio: partite e piazzamenti passano al socio e l'ospite viene eliminato.
+  Una partita ha come giocatori soci **o** ospiti (`partite_pickleball_giocatori.socio_id`/`ospite_id`).
+- Sesso e fascia d'età per i filtri della classifica sono **ricavati** da codice fiscale (giorno +40, omocodia)
+  e data di nascita: nessun dato in più chiesto ai soci.
+- Endpoint: `/pickleball/{classifica,circuito,me,me/profilo,giocatori,partite,partite/{id}/conferma|contesta}`;
+  dirigenza sotto `/dirigenza/pickleball` (dashboard, classifica e circuito completi, partite, inserimento,
+  conferma/annulla, `tornei` CRUD + `import` + `piazzamenti`, `ospiti` + `invita`/`collega`, `config`).
+  UI dirigenza a schede: Panoramica, Tornei, Ospiti, Impostazioni.
 
 **Credito interno** (`modules/credito/`, tabella `movimenti_credito`): un **registro**, non una moneta.
 - Si usa **solo per servizi dell'associazione** (per ora gli ingressi agli eventi). **Niente trasferimenti
@@ -1052,4 +1076,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.5 (classifica pickleball, credito interno)*
+*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.6 (tornei pickleball, ospiti, circuito)*

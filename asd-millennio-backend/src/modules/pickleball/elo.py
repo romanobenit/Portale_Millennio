@@ -5,6 +5,7 @@ della Millennio, calcolata solo dalle partite confermate sul portale.
 - Si parte da 1200; nelle prime 10 partite il fattore K è più alto (punteggio provvisorio).
 - Doppio: conta la media della coppia, ed entrambi i giocatori ricevono la variazione.
 - Conta solo vittoria/sconfitta, non il margine.
+- Le partite di torneo pesano di più delle amichevoli (`peso` moltiplica il fattore K).
 """
 
 RATING_INIZIALE = 1200.0
@@ -22,7 +23,7 @@ def atteso(rating_a: float, rating_b: float) -> float:
 
 
 def applica_partita(
-    stato: dict, squadra_a: list, squadra_b: list, vincitore: str
+    stato: dict, squadra_a: list, squadra_b: list, vincitore: str, peso: float = 1.0
 ) -> dict:
     """
     Aggiorna `stato` (socio -> {"rating", "partite"}) e ritorna socio -> (prima, dopo).
@@ -39,7 +40,7 @@ def applica_partita(
     for squadra, risultato in ((squadra_a, s_a - e_a), (squadra_b, (1 - s_a) - (1 - e_a))):
         for g in squadra:
             prima = stato[g]["rating"]
-            dopo = round(prima + fattore_k(stato[g]["partite"]) * risultato, 2)
+            dopo = round(prima + fattore_k(stato[g]["partite"]) * peso * risultato, 2)
             variazioni[g] = (round(prima, 2), dopo)
     for g, (_, dopo) in variazioni.items():
         stato[g]["rating"] = dopo

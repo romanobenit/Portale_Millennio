@@ -1,27 +1,53 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from core.security import RequireStaff, get_current_user
+from core.security import RequireDirigenza, RequireStaff, get_current_user
 from models.socio import Socio
 from modules.pickleball.service import PickleballService
+from modules.pickleball.tornei import TorneiService
 from schemas.pickleball import (
+    CircuitoResponse,
+    CollegaOspiteRequest,
+    ConfigPickleballSchema,
     ContestaRequest,
     DashboardPickleballDirigenza,
     Formato,
     GiocatoreRicerca,
+    ImportRisultatiResponse,
     MioPickleballResponse,
+    OspiteCreate,
+    OspiteResponse,
+    OspiteUpdate,
     PartitaCreate,
     PartitaDirigenzaCreate,
     PartitaResponse,
+    PiazzamentoResponse,
+    PiazzamentoUpdate,
     ProfiloAtletaResponse,
     ProfiloAtletaUpdate,
     RigaClassifica,
+    TorneoCreate,
+    TorneoDettaglioResponse,
+    TorneoResponse,
+    TorneoUpdate,
 )
+
+Sesso = Literal["M", "F"]
+ANNO = r"^\d{4}-\d{4}$"
 
 router = APIRouter(prefix="/pickleball", tags=["Pickleball — Classifica"])
 dirigenza_router = APIRouter(prefix="/dirigenza/pickleball", tags=["Dirigenza — Pickleball"])
@@ -41,11 +67,24 @@ async def _socio_corrente(user: dict, db: AsyncSession) -> Socio:
 @router.get("/classifica", response_model=list[RigaClassifica])
 async def classifica(
     formato: Formato = Query("doppio"),
+    sesso: Sesso | None = None,
+    eta_min: int | None = Query(None, ge=1, le=99),
     _: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db, scope="function"),
 ):
-    """Classifica Elo del club (soci autenticati). Esclusi minori e chi ha scelto di non comparire."""
-    return await PickleballService(db).classifica(formato)
+    """Classifica Elo del club (soci autenticati). Esclusi minori, inattivi e chi ha scelto di non comparire."""
+    return await PickleballService(db).classifica(formato, sesso=sesso, eta_min=eta_min)
+
+
+@router.get("/circuito", response_model=CircuitoResponse)
+async def circuito(
+    anno: str | None = Query(None, pattern=ANNO),
+    categoria: str | None = Query(None, max_length=20),
+    _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """Circuito tornei della stagione per categoria: somma dei migliori piazzamenti."""
+    return await TorneiService(db).circuito(anno, categoria, completo=False)
 
 
 @router.get("/me", response_model=MioPickleballResponse)
@@ -121,10 +160,135 @@ async def dashboard(_=RequireStaff, db: AsyncSession = Depends(get_db, scope="fu
 
 @dirigenza_router.get("/classifica", response_model=list[RigaClassifica])
 async def classifica_completa(
-    formato: Formato = Query("doppio"), _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")
+    formato: Formato = Query("doppio"),
+    sesso: Sesso | None = None,
+    eta_min: int | None = Query(None, ge=1, le=99),
+    _=RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
-    """Classifica completa con nomi per esteso (inclusi minori e profili nascosti)."""
-    return await PickleballService(db).classifica(formato, completa=True)
+    """Classifica completa con nomi per esteso (inclusi minori, profili nascosti e inattivi)."""
+    return await PickleballService(db).classifica(formato, completa=True, sesso=sesso, eta_min=eta_min)
+
+
+@dirigenza_router.get("/circuito", response_model=CircuitoResponse)
+async def circuito_completo(
+    anno: str | None = Query(None, pattern=ANNO),
+    categoria: str | None = Query(None, max_length=20),
+    _=RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    return await TorneiService(db).circuito(anno, categoria, completo=True)
+
+
+@dirigenza_router.get("/config", response_model=ConfigPickleballSchema)
+async def leggi_config(_=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).leggi_config()
+
+
+@dirigenza_router.put("/config", response_model=ConfigPickleballSchema)
+async def salva_config(
+    data: ConfigPickleballSchema, _=RequireDirigenza, db: AsyncSession = Depends(get_db, scope="function")
+):
+    """Pesi, punti e limiti: la classifica viene ricalcolata con i nuovi valori."""
+    return await TorneiService(db).salva_config(data)
+
+
+# ─── Tornei ─────────────────────────────────────────────────────────────────
+
+@dirigenza_router.get("/tornei", response_model=list[TorneoResponse])
+async def lista_tornei(_=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).lista()
+
+
+@dirigenza_router.post("/tornei", response_model=TorneoResponse, status_code=201)
+async def crea_torneo(data: TorneoCreate, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).crea(data)
+
+
+@dirigenza_router.get("/tornei/{torneo_id}", response_model=TorneoDettaglioResponse)
+async def dettaglio_torneo(torneo_id: UUID, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).dettaglio(torneo_id)
+
+
+@dirigenza_router.put("/tornei/{torneo_id}", response_model=TorneoResponse)
+async def aggiorna_torneo(
+    torneo_id: UUID, data: TorneoUpdate, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")
+):
+    return await TorneiService(db).aggiorna(torneo_id, data)
+
+
+@dirigenza_router.delete("/tornei/{torneo_id}", status_code=204)
+async def elimina_torneo(torneo_id: UUID, _=RequireDirigenza, db: AsyncSession = Depends(get_db, scope="function")):
+    """Elimina il torneo con le sue partite e i piazzamenti; la classifica viene ricalcolata."""
+    await TorneiService(db).elimina(torneo_id)
+
+
+@dirigenza_router.post("/tornei/{torneo_id}/import", response_model=ImportRisultatiResponse)
+async def importa_risultati(
+    torneo_id: UUID,
+    file: UploadFile = File(...),
+    conferma: bool = Form(False),
+    user: dict = RequireStaff,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    """Risultati da file CSV: anteprima (conferma=false) o importazione. Chi non è socio diventa ospite."""
+    content = await file.read(1024 * 1024 + 1)
+    if len(content) > 1024 * 1024:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File troppo grande (massimo 1 MB).")
+    return await TorneiService(db).importa(torneo_id, content, conferma, await _operatore_id(user, db))
+
+
+@dirigenza_router.post("/tornei/{torneo_id}/piazzamenti/ricalcola", response_model=list[PiazzamentoResponse])
+async def ricalcola_piazzamenti(torneo_id: UUID, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    """Ricava di nuovo i piazzamenti dalle partite (le correzioni manuali restano)."""
+    service = TorneiService(db)
+    await service.calcola_piazzamenti(torneo_id)
+    return (await service.dettaglio(torneo_id)).piazzamenti
+
+
+@dirigenza_router.put("/tornei/{torneo_id}/piazzamenti", response_model=list[PiazzamentoResponse])
+async def imposta_piazzamento(
+    torneo_id: UUID, data: PiazzamentoUpdate, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")
+):
+    return await TorneiService(db).imposta_piazzamento(torneo_id, data)
+
+
+# ─── Ospiti ─────────────────────────────────────────────────────────────────
+
+@dirigenza_router.get("/ospiti", response_model=list[OspiteResponse])
+async def lista_ospiti(_=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).lista_ospiti()
+
+
+@dirigenza_router.post("/ospiti", response_model=OspiteResponse, status_code=201)
+async def crea_ospite(data: OspiteCreate, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    return await TorneiService(db).crea_ospite(data)
+
+
+@dirigenza_router.put("/ospiti/{ospite_id}", response_model=OspiteResponse)
+async def aggiorna_ospite(
+    ospite_id: UUID, data: OspiteUpdate, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")
+):
+    return await TorneiService(db).aggiorna_ospite(ospite_id, data)
+
+
+@dirigenza_router.delete("/ospiti/{ospite_id}", status_code=204)
+async def elimina_ospite(ospite_id: UUID, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    await TorneiService(db).elimina_ospite(ospite_id)
+
+
+@dirigenza_router.post("/ospiti/{ospite_id}/invita", response_model=OspiteResponse)
+async def invita_ospite(ospite_id: UUID, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")):
+    """Email di invito a iscriversi alla community (solo se l'ospite ha lasciato l'email)."""
+    return await TorneiService(db).invita_ospite(ospite_id)
+
+
+@dirigenza_router.post("/ospiti/{ospite_id}/collega", status_code=204)
+async def collega_ospite(
+    ospite_id: UUID, data: CollegaOspiteRequest, _=RequireStaff, db: AsyncSession = Depends(get_db, scope="function")
+):
+    """L'ospite si è iscritto: partite e piazzamenti passano al socio."""
+    await TorneiService(db).collega_ospite(ospite_id, data.socio_id)
 
 
 @dirigenza_router.get("/partite", response_model=list[PartitaResponse])
