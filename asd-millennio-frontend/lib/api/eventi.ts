@@ -16,6 +16,7 @@ export interface EventoPubblico {
   in_lista_attesa: number;
   completo: boolean;
   stato: "programmato" | "annullato";
+  locandina_url: string | null; // percorso sotto l'API, vedi urlLocandina()
 }
 
 export interface PrenotazioneEvento {
@@ -168,6 +169,21 @@ export async function aggiornaEvento(eventoId: string, input: Partial<EventoInpu
   return data;
 }
 
+/** Carica (o sostituisce) la locandina: JPG, PNG o WebP fino a 8 MB. */
+export async function caricaLocandina(eventoId: string, file: File): Promise<EventoDirigenza> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.put<EventoDirigenza>(`/dirigenza/eventi/${eventoId}/locandina`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function rimuoviLocandina(eventoId: string): Promise<EventoDirigenza> {
+  const { data } = await apiClient.delete<EventoDirigenza>(`/dirigenza/eventi/${eventoId}/locandina`);
+  return data;
+}
+
 export async function annullaEvento(eventoId: string): Promise<EventoDirigenza> {
   const { data } = await apiClient.post<EventoDirigenza>(`/dirigenza/eventi/${eventoId}/annulla`);
   return data;
@@ -220,6 +236,11 @@ export function formattaDataEvento(iso: string): string {
     day: "numeric",
     month: "long",
   });
+}
+
+/** URL assoluto dell'immagine della locandina (pubblica, versionata). */
+export function urlLocandina(percorso: string): string {
+  return `${process.env.NEXT_PUBLIC_API_URL}${percorso}`;
 }
 
 export function formattaOra(hhmmss: string): string {

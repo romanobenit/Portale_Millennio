@@ -97,6 +97,8 @@ class EventoPubblicoResponse(BaseModel):
     in_lista_attesa: int
     completo: bool
     stato: str
+    # Percorso dell'immagine sotto /api/v1 (None = nessuna locandina)
+    locandina_url: str | None = None
 
 
 class PrenotazioneEventoResponse(BaseModel):

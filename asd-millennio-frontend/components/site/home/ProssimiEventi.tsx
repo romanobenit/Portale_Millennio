@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Section, SectionHeading } from "@/components/site/Section";
 import { ContatorePresenze } from "@/components/eventi/ContatorePresenze";
+import { Locandina } from "@/components/eventi/Locandina";
 import { portalLinks } from "@/lib/site";
 import {
   etichettaSport,
@@ -47,8 +48,11 @@ export function ProssimiEventi() {
         )}
 
         {primo && (
-          <article className="mx-auto max-w-3xl overflow-hidden rounded-2xl bg-gradient-to-br from-accent-500 to-brand-600 text-white shadow-lg">
-            <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+          <article className="mx-auto flex max-w-3xl flex-col overflow-hidden rounded-2xl bg-gradient-to-br from-accent-500 to-brand-600 text-white shadow-lg sm:flex-row">
+            {primo.locandina_url && (
+              <Locandina url={primo.locandina_url} titolo={primo.titolo} intera className="bg-black/20 sm:w-64" />
+            )}
+            <div className="flex flex-1 flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wider text-white/80">Il prossimo evento</p>
                 <h3 className="mt-2 font-display text-2xl font-bold capitalize sm:text-3xl">
@@ -83,13 +87,18 @@ export function ProssimiEventi() {
           <ul className="mx-auto mt-6 max-w-3xl divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white">
             {altri.map((ev) => (
               <li key={ev.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-4">
+                  {ev.locandina_url && (
+                    <Locandina url={ev.locandina_url} titolo={ev.titolo} className="h-20 w-14 rounded-md" />
+                  )}
+                  <div className="min-w-0">
                   <p className="font-semibold capitalize text-slate-900">{formattaDataEvento(ev.data)}</p>
                   <p className="text-sm text-slate-600">
                     {formattaOra(ev.ora_inizio)}–{formattaOra(ev.ora_fine)} · {etichettaSport(ev.sport)} ·{" "}
                     {formattaPrezzo(ev.prezzo_eur)}
                   </p>
                   {ev.titolo && <p className="text-sm text-slate-500">{ev.titolo}</p>}
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 sm:shrink-0">
                   <ContatorePresenze

@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    LargeBinary,
     Numeric,
     SmallInteger,
     String,
@@ -52,10 +53,27 @@ class EventoCampo(Base):
     presenze_manuali = Column(SmallInteger, nullable=False, default=0)
     stato = Column(StatoEvento, nullable=False, default="programmato")
     note = Column(Text, nullable=True)
+    # Quando è stata caricata la locandina (None = nessuna): entra nell'URL pubblico
+    # dell'immagine, così ogni nuova locandina invalida la cache dei browser.
+    locandina_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     prenotazioni = relationship("PrenotazioneEvento", back_populates="evento")
+
+
+class LocandinaEvento(Base):
+    """Locandina pubblica dell'evento, già ricompressa in JPEG (senza metadati EXIF)."""
+    __tablename__ = "locandine_evento"
+
+    evento_id = Column(
+        UUID(as_uuid=True), ForeignKey("eventi_campo.id", ondelete="CASCADE"), primary_key=True
+    )
+    contenuto = Column(LargeBinary, nullable=False)
+    content_type = Column(String, nullable=False)
+    larghezza = Column(SmallInteger, nullable=False)
+    altezza = Column(SmallInteger, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class PrenotazioneEvento(Base):
