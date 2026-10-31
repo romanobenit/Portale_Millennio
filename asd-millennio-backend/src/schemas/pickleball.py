@@ -2,9 +2,11 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 Formato = Literal["singolo", "doppio"]
+Livello = Literal["sociale", "open", "federale"]
+PiazzamentoTipo = Literal["vincitore", "finalista", "semifinalista", "fase_finale", "partecipazione", "nessuno"]
 
 
 class PartitaCreate(BaseModel):
@@ -26,6 +28,7 @@ class PartitaCreate(BaseModel):
 
 
 class PartitaDirigenzaCreate(BaseModel):
+    """Le squadre possono contenere soci o ospiti (gli id di entrambi vengono riconosciuti)."""
     formato: Formato
     data: date
     squadra_a: list[UUID] = Field(..., min_length=1, max_length=2)
@@ -57,7 +60,9 @@ class ProfiloAtletaUpdate(BaseModel):
 
 
 class GiocatoreBreve(BaseModel):
-    socio_id: UUID
+    socio_id: UUID | None = None
+    ospite_id: UUID | None = None
+    ospite: bool = False
     nome: str                     # "Mario R." per i soci, nome completo per la dirigenza
     squadra: str
     rating_prima: float | None = None
@@ -72,6 +77,11 @@ class PartitaResponse(BaseModel):
     vincitore: str
     stato: str
     torneo: str | None
+    torneo_id: UUID | None = None
+    categoria: str | None = None
+    fase: str | None = None
+    walkover: bool = False
+    fuori_classifica: str | None = None   # "walkover" | "limite amichevoli": confermata ma non conta nell'Elo
     inserita_da_dirigenza: bool
     note: str | None
     giocatori: list[GiocatoreBreve]
@@ -90,6 +100,7 @@ class RigaClassifica(BaseModel):
     vittorie: int
     provvisorio: bool
     dupr: float | None = None
+    inattivo: bool = False
 
 
 class PuntoAndamento(BaseModel):
@@ -133,7 +144,8 @@ class MioPickleballResponse(BaseModel):
 
 
 class GiocatoreRicerca(BaseModel):
-    socio_id: UUID
+    socio_id: UUID                # per gli ospiti (solo ricerca dirigenza) è l'id dell'ospite
+    ospite: bool = False
     nome: str
     rating_singolo: float | None
     rating_doppio: float | None
@@ -153,3 +165,175 @@ class DashboardPickleballDirigenza(BaseModel):
     per_settimana: list[SettimanaPartite]
     top_singolo: list[RigaClassifica]
     top_doppio: list[RigaClassifica]
+
+
+# ─── Tornei, ospiti, circuito ───────────────────────────────────────────────
+
+class TorneoCreate(BaseModel):
+    nome: str = Field(..., min_length=3, max_length=120)
+    data: date
+    luogo: str | None = Field(None, max_length=120)
+    livello: Livello = "sociale"
+    url_esterno: str | None = Field(None, max_length=500)
+    note: str | None = Field(None, max_length=1000)
+
+
+class TorneoUpdate(BaseModel):
+    nome: str | None = Field(None, min_length=3, max_length=120)
+    data: date | None = None
+    luogo: str | None = Field(None, max_length=120)
+    livello: Livello | None = None
+    url_esterno: str | None = Field(None, max_length=500)
+    note: str | None = Field(None, max_length=1000)
+    concluso: bool | None = None
+
+
+class TorneoResponse(BaseModel):
+    id: UUID
+    nome: str
+    data: date
+    luogo: str | None
+    livello: str
+    anno_sportivo: str
+    concluso: bool
+    url_esterno: str | None
+    note: str | None
+    partite: int = 0
+    categorie: list[str] = []
+
+
+class PiazzamentoResponse(BaseModel):
+    giocatore_id: UUID
+    nome: str
+    ospite: bool
+    categoria: str
+    piazzamento: str
+    punti: float
+    manuale: bool
+
+
+class TorneoDettaglioResponse(BaseModel):
+    torneo: TorneoResponse
+    partite: list[PartitaResponse]
+    piazzamenti: list[PiazzamentoResponse]
+
+
+class PiazzamentoUpdate(BaseModel):
+    categoria: str = Field(..., min_length=1, max_length=20)
+    giocatore_id: UUID
+    piazzamento: PiazzamentoTipo      # "nessuno" = nessun punto (es. ritirato): i ricalcoli non lo cambiano
+
+
+class GiocatoreImport(BaseModel):
+    nome: str
+    tipo: Literal["socio", "ospite", "nuovo_ospite"]
+
+
+class RigaImportRisultato(BaseModel):
+    riga: int
+    categoria: str
+    fase: str
+    squadra_a: list[GiocatoreImport]
+    squadra_b: list[GiocatoreImport]
+    punteggio: str
+    vincitore: str | None
+    walkover: bool
+    esito: Literal["ok", "errore", "saltata", "gia_importata"]
+    messaggio: str | None = None
+
+
+class ImportRisultatiResponse(BaseModel):
+    righe: list[RigaImportRisultato]
+    da_importare: int
+    errori: int
+    saltate: int
+    gia_importate: int
+    nuovi_ospiti: list[str]
+    importate: int = 0          # valorizzato solo con conferma
+
+
+class OspiteCreate(BaseModel):
+    nome: str = Field(..., min_length=1, max_length=60)
+    cognome: str = Field(..., min_length=1, max_length=60)
+    club: str | None = Field(None, max_length=120)
+    email: EmailStr | None = None
+    sesso: Literal["M", "F"] | None = None
+    anno_nascita: int | None = Field(None, ge=1920, le=2025)
+
+
+class OspiteUpdate(BaseModel):
+    nome: str | None = Field(None, min_length=1, max_length=60)
+    cognome: str | None = Field(None, min_length=1, max_length=60)
+    club: str | None = Field(None, max_length=120)
+    email: EmailStr | None = None
+    sesso: Literal["M", "F"] | None = None
+    anno_nascita: int | None = Field(None, ge=1920, le=2025)
+
+
+class OspiteResponse(BaseModel):
+    id: UUID
+    nome: str
+    cognome: str
+    club: str | None
+    email: str | None
+    sesso: str | None
+    anno_nascita: int | None
+    invitato_at: datetime | None
+    partite: int
+    rating_singolo: float | None
+    rating_doppio: float | None
+
+
+class CollegaOspiteRequest(BaseModel):
+    socio_id: UUID
+
+
+class PuntiPiazzamento(BaseModel):
+    vincitore: int = Field(..., ge=0, le=1000)
+    finalista: int = Field(..., ge=0, le=1000)
+    semifinalista: int = Field(..., ge=0, le=1000)
+    fase_finale: int = Field(..., ge=0, le=1000)
+    partecipazione: int = Field(..., ge=0, le=1000)
+
+
+class MoltiplicatoriLivello(BaseModel):
+    sociale: float = Field(..., ge=0.1, le=5)
+    open: float = Field(..., ge=0.1, le=5)
+    federale: float = Field(..., ge=0.1, le=5)
+
+
+class ConfigPickleballSchema(BaseModel):
+    peso_torneo: float = Field(..., ge=1, le=3)
+    amichevoli_max_settimana: int = Field(..., ge=1, le=20)
+    giorni_inattivita: int = Field(..., ge=14, le=730)
+    migliori_risultati: int = Field(..., ge=1, le=30)
+    punti: PuntiPiazzamento
+    livelli: MoltiplicatoriLivello
+
+
+class RisultatoCircuito(BaseModel):
+    torneo_id: UUID
+    torneo: str
+    data: date
+    piazzamento: str
+    punti: float
+    conta: bool                  # rientra tra i migliori risultati della stagione
+
+
+class RigaCircuito(BaseModel):
+    posizione: int
+    giocatore_id: UUID
+    nome: str
+    ospite: bool = False
+    punti: float
+    tornei: int
+    risultati: list[RisultatoCircuito]
+
+
+class CircuitoResponse(BaseModel):
+    anno_sportivo: str | None
+    categoria: str | None
+    anni: list[str]
+    categorie: list[str]
+    migliori_risultati: int
+    righe: list[RigaCircuito]

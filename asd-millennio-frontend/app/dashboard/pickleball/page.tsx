@@ -5,15 +5,15 @@ import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { AndamentoRating } from "@/components/pickleball/AndamentoRating";
 import { SceltaGiocatore } from "@/components/pickleball/SceltaGiocatore";
-import { TabellaClassifica } from "@/components/pickleball/TabellaClassifica";
+import { ClassificheClub } from "@/components/pickleball/ClassificheClub";
 import { fetchMe } from "@/lib/api/soci";
 import {
   aggiornaProfiloAtleta,
   cercaGiocatori,
   confermaPartita,
   contestaPartita,
-  fetchClassifica,
   fetchMioPickleball,
+  ETICHETTA_FASE,
   formattaData,
   formattaPunteggi,
   leggiPunteggi,
@@ -24,7 +24,6 @@ import {
   type MioPickleball,
   type Partita,
   type ProfiloAtleta,
-  type RigaClassifica,
   type StatisticheFormato,
 } from "@/lib/api/pickleball";
 
@@ -90,14 +89,21 @@ function RigaPartita({ p, children }: { p: Partita; children?: React.ReactNode }
     <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="text-sm">
         <p>
-          <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomi(a)}</span>
+          <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomi(a) || "—"}</span>
           <span className="mx-1.5 text-gray-400">vs</span>
-          <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomi(b)}</span>
+          <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomi(b) || "—"}</span>
         </p>
         <p className="text-xs text-gray-500">
           {formattaData(p.data)} · {p.formato} · {formattaPunteggi(p)}
           {p.torneo && ` · ${p.torneo}`}
+          {p.categoria && ` · ${p.categoria}`}
+          {p.fase && p.fase !== "girone" && ` · ${ETICHETTA_FASE[p.fase] ?? p.fase}`}
         </p>
+        {p.fuori_classifica && !p.walkover && (
+          <p className="text-xs text-gray-400">
+            Non conta per il punteggio: superato il limite settimanale di amichevoli contro lo stesso avversario.
+          </p>
+        )}
         {p.note && <p className="text-xs text-orange-700">{p.note}</p>}
       </div>
       {children && <div className="flex shrink-0 gap-2">{children}</div>}
@@ -290,8 +296,7 @@ function FormProfilo({ profilo, onSalvato }: { profilo: ProfiloAtleta; onSalvato
 export default function PickleballPage() {
   const [mio, setMio] = useState<MioPickleball | null>(null);
   const [socioId, setSocioId] = useState("");
-  const [formatoClassifica, setFormatoClassifica] = useState<Formato>("doppio");
-  const [classifica, setClassifica] = useState<RigaClassifica[]>([]);
+  const [versione, setVersione] = useState(0); // ricarica le classifiche dopo un'azione
   const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -306,20 +311,11 @@ export default function PickleballPage() {
     }
   }, []);
 
-  const caricaClassifica = useCallback(async () => {
-    try {
-      setClassifica(await fetchClassifica(formatoClassifica));
-    } catch {
-      setClassifica([]);
-    }
-  }, [formatoClassifica]);
+  const caricaClassifica = useCallback(async () => setVersione((v) => v + 1), []);
 
   useEffect(() => {
     carica();
   }, [carica]);
-  useEffect(() => {
-    caricaClassifica();
-  }, [caricaClassifica]);
 
   const esegui = async (chiave: string, azione: () => Promise<void>, ok: string) => {
     setBusy(chiave);
@@ -429,21 +425,8 @@ export default function PickleballPage() {
       )}
 
       <div className={card}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-gray-900">Classifica del club</h2>
-          <div className="inline-flex rounded-lg border border-gray-300 p-0.5">
-            {(["doppio", "singolo"] as Formato[]).map((f) => (
-              <button key={f} type="button" onClick={() => setFormatoClassifica(f)}
-                className={clsx("rounded-md px-3 py-1 text-sm font-medium capitalize",
-                  formatoClassifica === f ? "bg-blue-700 text-white" : "text-gray-700")}>
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-3">
-          <TabellaClassifica righe={classifica} evidenzia={socioId} />
-        </div>
+        <h2 className="mb-3 font-semibold text-gray-900">Classifiche del club</h2>
+        <ClassificheClub key={versione} evidenzia={socioId} />
       </div>
 
       {mio.recenti.length > 0 && (

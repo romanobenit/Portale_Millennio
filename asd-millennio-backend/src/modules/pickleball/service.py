@@ -8,10 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import logger
 from models.pickleball import (
+    ConfigPickleball,
+    GiocatoreOspite,
     GiocatorePartita,
     PartitaPickleball,
     ProfiloAtleta,
+    RatingOspite,
     RatingPickleball,
+    TorneoPickleball,
 )
 from models.socio import Socio
 from modules.eventi.service import EventiService
@@ -20,6 +24,7 @@ from modules.pickleball.elo import (
     applica_partita,
     vincitore_da_punteggi,
 )
+from modules.pickleball.regole import config_completa, eta_nell_anno, sesso_da_cf
 from schemas.pickleball import (
     DashboardPickleballDirigenza,
     GiocatoreBreve,
@@ -43,24 +48,51 @@ def nome_breve(s: Socio) -> str:
     return f"{s.nome} {s.cognome[:1]}." if s.cognome else s.nome
 
 
+def nome_ospite(o: GiocatoreOspite, completo: bool) -> str:
+    if completo:
+        return f"{o.nome} {o.cognome} (ospite{', ' + o.club if o.club else ''})"
+    return f"{o.nome} {o.cognome[:1]}. (ospite)"
+
+
 class PickleballService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
     # ─── helpers ────────────────────────────────────────────────────────────
 
+    async def config(self) -> dict:
+        riga = (await self.db.execute(select(ConfigPickleball).where(ConfigPickleball.id == 1))).scalar_one_or_none()
+        return config_completa(riga.valori if riga else None)
+
     async def _soci(self, ids) -> dict[UUID, Socio]:
-        ids = list(set(ids))
+        ids = [i for i in set(ids) if i]
         if not ids:
             return {}
         r = await self.db.execute(select(Socio).where(Socio.id.in_(ids)))
         return {s.id: s for s in r.scalars().all()}
 
-    async def _verifica_giocatori(self, ids: list[UUID]) -> None:
+    async def _ospiti(self, ids) -> dict[UUID, GiocatoreOspite]:
+        ids = [i for i in set(ids) if i]
+        if not ids:
+            return {}
+        r = await self.db.execute(select(GiocatoreOspite).where(GiocatoreOspite.id.in_(ids)))
+        return {o.id: o for o in r.scalars().all()}
+
+    async def nomi(self, soci_ids, ospiti_ids, *, completi: bool) -> dict[UUID, str]:
+        soci, ospiti = await self._soci(soci_ids), await self._ospiti(ospiti_ids)
+        out = {sid: (f"{s.nome} {s.cognome}" if completi else nome_breve(s)) for sid, s in soci.items()}
+        out.update({oid: nome_ospite(o, completi) for oid, o in ospiti.items()})
+        return out
+
+    async def _verifica_giocatori(self, ids: list[UUID], *, ammetti_ospiti: bool = False) -> set[UUID]:
+        """Verifica che esistano tutti; ritorna gli id che sono ospiti."""
         if len(set(ids)) != len(ids):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lo stesso giocatore compare due volte")
-        if len(await self._soci(ids)) != len(ids):
+        soci = await self._soci(ids)
+        ospiti = set((await self._ospiti(ids)).keys()) if ammetti_ospiti else set()
+        if len(soci) + len(ospiti) != len(ids):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Giocatore non trovato")
+        return ospiti
 
     async def _verifica_abilitato(self, socio: Socio) -> None:
         fino = (await EventiService(self.db)._abilitati_fino_al([socio.id]))[socio.id]
@@ -89,11 +121,17 @@ class PickleballService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Partita non trovata")
         return p
 
-    async def _risposte(
+    async def risposte(
         self, partite: list[PartitaPickleball], *, viewer_id: UUID | None = None, nomi_completi: bool = False
     ) -> list[PartitaResponse]:
         gioc = await self._giocatori([p.id for p in partite])
-        soci = await self._soci([g.socio_id for lst in gioc.values() for g in lst])
+        tutti = [g for lst in gioc.values() for g in lst]
+        nomi = await self.nomi([g.socio_id for g in tutti], [g.ospite_id for g in tutti], completi=nomi_completi)
+        tornei_ids = {p.torneo_id for p in partite if p.torneo_id}
+        tornei = {}
+        if tornei_ids:
+            r = await self.db.execute(select(TorneoPickleball.id, TorneoPickleball.nome).where(TorneoPickleball.id.in_(tornei_ids)))
+            tornei = dict(r.all())
         out = []
         for p in partite:
             lst = gioc[p.id]
@@ -101,15 +139,13 @@ class PickleballService:
             mia = next((g.squadra for g in lst if g.socio_id == viewer_id), None)
             out.append(PartitaResponse(
                 id=p.id, formato=p.formato, data=p.data, punteggi=p.punteggi, vincitore=p.vincitore,
-                stato=p.stato, torneo=p.torneo, inserita_da_dirigenza=p.inserita_da_dirigenza, note=p.note,
-                created_at=p.created_at,
+                stato=p.stato, torneo=tornei.get(p.torneo_id, p.torneo), torneo_id=p.torneo_id,
+                categoria=p.categoria, fase=p.fase, walkover=p.walkover, fuori_classifica=p.fuori_classifica,
+                inserita_da_dirigenza=p.inserita_da_dirigenza, note=p.note, created_at=p.created_at,
                 giocatori=[
                     GiocatoreBreve(
-                        socio_id=g.socio_id,
-                        nome=(
-                            f"{soci[g.socio_id].nome} {soci[g.socio_id].cognome}" if nomi_completi
-                            else nome_breve(soci[g.socio_id])
-                        ) if g.socio_id in soci else "—",
+                        socio_id=g.socio_id, ospite_id=g.ospite_id, ospite=g.ospite_id is not None,
+                        nome=nomi.get(g.giocatore_id, "—"),
                         squadra=g.squadra,
                         rating_prima=float(g.rating_prima) if g.rating_prima is not None else None,
                         rating_dopo=float(g.rating_dopo) if g.rating_dopo is not None else None,
@@ -123,15 +159,22 @@ class PickleballService:
             ))
         return out
 
-    async def _crea(
+    async def crea_partita(
         self, *, formato: str, data: date, squadra_a: list[UUID], squadra_b: list[UUID], punteggi: list,
-        confermata: bool, inserita_da: UUID | None, dirigenza: bool, torneo: str | None = None,
-        note: str | None = None,
+        confermata: bool, inserita_da: UUID | None, dirigenza: bool, ospiti: set[UUID] = frozenset(),
+        torneo: str | None = None, note: str | None = None, torneo_id: UUID | None = None,
+        categoria: str | None = None, fase: str | None = None, walkover: bool = False,
+        vincitore: str | None = None, ricalcola: bool = True,
     ) -> PartitaPickleball:
-        try:
-            vincitore = vincitore_da_punteggi(punteggi)
-        except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        if walkover:
+            if vincitore not in ("a", "b"):
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Walkover: indica il vincitore")
+            punteggi = []
+        else:
+            try:
+                vincitore = vincitore_da_punteggi(punteggi)
+            except ValueError as e:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         if data > date.today():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La data della partita non può essere futura")
         now = datetime.now(timezone.utc)
@@ -140,22 +183,31 @@ class PickleballService:
             stato="confermata" if confermata else "in_attesa_conferma",
             torneo=torneo, note=note, inserita_da=inserita_da, inserita_da_dirigenza=dirigenza,
             confermata_da=inserita_da if confermata else None, confermata_at=now if confermata else None,
+            torneo_id=torneo_id, categoria=categoria, fase=fase, walkover=walkover,
         )
         self.db.add(p)
         await self.db.flush()
         for squadra, ids in (("a", squadra_a), ("b", squadra_b)):
-            for sid in ids:
-                self.db.add(GiocatorePartita(partita_id=p.id, socio_id=sid, squadra=squadra))
+            for gid in ids:
+                if gid in ospiti:
+                    self.db.add(GiocatorePartita(partita_id=p.id, ospite_id=gid, squadra=squadra))
+                else:
+                    self.db.add(GiocatorePartita(partita_id=p.id, socio_id=gid, squadra=squadra))
         await self.db.flush()
-        if confermata:
+        if confermata and ricalcola:
             await self.ricalcola(formato)
         return p
 
     # ─── classifica (ricalcolo completo) ────────────────────────────────────
 
     async def ricalcola(self, formato: str) -> None:
-        """Ricostruisce la classifica del formato rigiocando in ordine tutte le partite confermate."""
+        """
+        Ricostruisce la classifica del formato rigiocando in ordine tutte le partite confermate.
+        Non contano: i walkover e le amichevoli oltre il limite settimanale contro lo stesso avversario.
+        Le partite di torneo pesano `peso_torneo` volte un'amichevole.
+        """
         await self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext('ricalcolo_pickleball'))"))
+        cfg = await self.config()
         partite = (
             await self.db.execute(
                 select(PartitaPickleball)
@@ -166,17 +218,34 @@ class PickleballService:
         gioc = await self._giocatori([p.id for p in partite])
 
         stato: dict = {}
+        ospiti: set = set()
         agg: dict = defaultdict(lambda: {"max": 0.0, "vittorie": 0, "ultima": None})
+        amichevoli: Counter = Counter()      # (anno, settimana, coppia di avversari) -> amichevoli contate
         for p in partite:
             lst = gioc[p.id]
-            a = [g.socio_id for g in lst if g.squadra == "a"]
-            b = [g.socio_id for g in lst if g.squadra == "b"]
-            if not a or not b:
-                continue
-            variazioni = applica_partita(stato, a, b, p.vincitore)
             for g in lst:
-                g.rating_prima, g.rating_dopo = variazioni[g.socio_id]
-                x = agg[g.socio_id]
+                g.rating_prima = g.rating_dopo = None
+            a = [g.giocatore_id for g in lst if g.squadra == "a"]
+            b = [g.giocatore_id for g in lst if g.squadra == "b"]
+            if p.walkover or not a or not b:
+                p.fuori_classifica = "walkover"
+                continue
+            if p.torneo_id is None:
+                settimana = p.data.isocalendar()[:2]
+                coppie = [(settimana, frozenset((x, y))) for x in a for y in b]
+                if any(amichevoli[c] >= cfg["amichevoli_max_settimana"] for c in coppie):
+                    p.fuori_classifica = "limite amichevoli"
+                    continue
+                for c in coppie:
+                    amichevoli[c] += 1
+            p.fuori_classifica = None
+            peso = cfg["peso_torneo"] if p.torneo_id else 1.0
+            variazioni = applica_partita(stato, a, b, p.vincitore, peso)
+            for g in lst:
+                if g.ospite_id:
+                    ospiti.add(g.ospite_id)
+                g.rating_prima, g.rating_dopo = variazioni[g.giocatore_id]
+                x = agg[g.giocatore_id]
                 x["max"] = max(x["max"], g.rating_dopo)
                 x["vittorie"] += 1 if g.squadra == p.vincitore else 0
                 x["ultima"] = p.data
@@ -189,16 +258,37 @@ class PickleballService:
             .where(GiocatorePartita.partita_id.in_(non_confermate))
             .values(rating_prima=None, rating_dopo=None)
         )
+        await self.db.execute(
+            update(PartitaPickleball)
+            .where(PartitaPickleball.formato == formato, PartitaPickleball.stato != "confermata")
+            .values(fuori_classifica=None)
+        )
         await self.db.execute(delete(RatingPickleball).where(RatingPickleball.formato == formato))
-        for sid, s in stato.items():
-            self.db.add(RatingPickleball(
-                socio_id=sid, formato=formato, rating=s["rating"], rating_max=agg[sid]["max"],
-                partite=s["partite"], vittorie=agg[sid]["vittorie"], ultima_partita=agg[sid]["ultima"],
-            ))
+        await self.db.execute(delete(RatingOspite).where(RatingOspite.formato == formato))
+        for gid, s in stato.items():
+            if gid in ospiti:
+                self.db.add(RatingOspite(
+                    ospite_id=gid, formato=formato, rating=s["rating"], partite=s["partite"],
+                    vittorie=agg[gid]["vittorie"],
+                ))
+            else:
+                self.db.add(RatingPickleball(
+                    socio_id=gid, formato=formato, rating=s["rating"], rating_max=agg[gid]["max"],
+                    partite=s["partite"], vittorie=agg[gid]["vittorie"], ultima_partita=agg[gid]["ultima"],
+                ))
         await self.db.flush()
         logger.info("Classifica pickleball %s ricalcolata: %d partite, %d giocatori", formato, len(partite), len(stato))
 
-    async def classifica(self, formato: str, *, completa: bool = False, limite: int | None = None) -> list[RigaClassifica]:
+    async def classifica(
+        self, formato: str, *, completa: bool = False, limite: int | None = None,
+        sesso: str | None = None, eta_min: int | None = None,
+    ) -> list[RigaClassifica]:
+        """
+        Classifica Elo dei soci (gli ospiti non compaiono). Per i soci: niente minori, niente profili
+        nascosti, niente inattivi. `completa` (dirigenza) mostra tutti, con nomi per esteso.
+        Sesso e fascia d'età sono ricavati da codice fiscale e data di nascita.
+        """
+        cfg = await self.config()
         q = (
             select(RatingPickleball, Socio, ProfiloAtleta)
             .join(Socio, Socio.id == RatingPickleball.socio_id)
@@ -210,15 +300,25 @@ class PickleballService:
             q = q.where(Socio.is_minor.is_(False)).where(
                 (ProfiloAtleta.visibile_in_classifica.is_(None)) | (ProfiloAtleta.visibile_in_classifica.is_(True))
             )
+        oggi = date.today()
+        soglia_attivita = oggi - timedelta(days=cfg["giorni_inattivita"])
         righe = []
-        for i, (r, s, prof) in enumerate((await self.db.execute(q)).all(), start=1):
+        for r, s, prof in (await self.db.execute(q)).all():
+            inattivo = r.ultima_partita is None or r.ultima_partita < soglia_attivita
+            if inattivo and not completa:
+                continue
+            if sesso and sesso_da_cf(s.codice_fiscale) != sesso:
+                continue
+            if eta_min and (eta_nell_anno(s.data_nascita, oggi.year) or 0) < eta_min:
+                continue
             dupr = None
             if prof is not None:
                 dupr = prof.dupr_singolo if formato == "singolo" else prof.dupr_doppio
             righe.append(RigaClassifica(
-                posizione=i, socio_id=s.id, nome=f"{s.nome} {s.cognome}" if completa else nome_breve(s),
+                posizione=len(righe) + 1, socio_id=s.id, nome=f"{s.nome} {s.cognome}" if completa else nome_breve(s),
                 rating=float(r.rating), rating_max=float(r.rating_max), partite=r.partite, vittorie=r.vittorie,
                 provvisorio=r.partite < PARTITE_PROVVISORIE, dupr=float(dupr) if dupr is not None else None,
+                inattivo=inattivo,
             ))
             if limite and len(righe) >= limite:
                 break
@@ -231,12 +331,12 @@ class PickleballService:
         squadra_a = [socio.id] + ([dati.compagno_id] if dati.compagno_id else [])
         squadra_b = list(dati.avversari_ids)
         await self._verifica_giocatori(squadra_a + squadra_b)
-        p = await self._crea(
+        p = await self.crea_partita(
             formato=dati.formato, data=dati.data, squadra_a=squadra_a, squadra_b=squadra_b,
             punteggi=dati.punteggi, confermata=False, inserita_da=socio.id, dirigenza=False,
         )
         await self.db.refresh(p)
-        return (await self._risposte([p], viewer_id=socio.id))[0]
+        return (await self.risposte([p], viewer_id=socio.id))[0]
 
     async def _squadre(self, p: PartitaPickleball, socio_id: UUID) -> tuple[str | None, str | None]:
         lst = (await self._giocatori([p.id]))[p.id]
@@ -320,6 +420,7 @@ class PickleballService:
         ).scalars().all()
         gioc = await self._giocatori([p.id for p in mie])
         confermate = [p for p in mie if p.stato == "confermata"]
+        giocate = [p for p in confermate if not p.walkover]
 
         statistiche = {}
         for formato in FORMATI:
@@ -332,7 +433,7 @@ class PickleballService:
             ).scalar_one_or_none()
             posizione = None
             if r:
-                # posizione nella classifica che vedono gli altri soci; se nascosto, in quella completa
+                # posizione nella classifica che vedono gli altri soci; se non vi compare, in quella completa
                 for completa in (False, True):
                     posizione = next(
                         (c.posizione for c in await self.classifica(formato, completa=completa)
@@ -364,30 +465,31 @@ class PickleballService:
         inizio_mese = date.today().replace(day=1)
         serie = 0
         compagni, avversari = Counter(), Counter()
-        for p in confermate:
+        for p in giocate:
             mia = next(g.squadra for g in gioc[p.id] if g.socio_id == socio.id)
             for g in gioc[p.id]:
                 if g.socio_id != socio.id:
-                    (compagni if g.squadra == mia else avversari)[g.socio_id] += 1
-        for p in confermate:
+                    (compagni if g.squadra == mia else avversari)[g.giocatore_id] += 1
+        for p in giocate:
             mia = next(g.squadra for g in gioc[p.id] if g.socio_id == socio.id)
             if mia != p.vincitore:
                 break
             serie += 1
-        soci = await self._soci(list(compagni) + list(avversari))
+        frequenti = list(compagni) + list(avversari)
+        nomi = await self.nomi(frequenti, frequenti, completi=False)
 
         def piu_frequente(c: Counter) -> str | None:
             if not c:
                 return None
-            sid, n = c.most_common(1)[0]
-            return f"{nome_breve(soci[sid])} ({n})" if sid in soci else None
+            gid, n = c.most_common(1)[0]
+            return f"{nomi[gid]} ({n})" if gid in nomi else None
 
-        risposte = await self._risposte(mie, viewer_id=socio.id)
+        risposte = await self.risposte(mie, viewer_id=socio.id)
         return MioPickleballResponse(
             profilo=self._profilo_response(prof),
             singolo=statistiche["singolo"],
             doppio=statistiche["doppio"],
-            partite_questo_mese=sum(1 for p in confermate if p.data >= inizio_mese),
+            partite_questo_mese=sum(1 for p in giocate if p.data >= inizio_mese),
             serie_vittorie=serie,
             compagno_frequente=piu_frequente(compagni),
             avversario_frequente=piu_frequente(avversari),
@@ -429,14 +531,14 @@ class PickleballService:
     # ─── dirigenza ──────────────────────────────────────────────────────────
 
     async def registra_dirigenza(self, operatore_id: UUID | None, dati: PartitaDirigenzaCreate) -> PartitaResponse:
-        await self._verifica_giocatori(list(dati.squadra_a) + list(dati.squadra_b))
-        p = await self._crea(
+        ospiti = await self._verifica_giocatori(list(dati.squadra_a) + list(dati.squadra_b), ammetti_ospiti=True)
+        p = await self.crea_partita(
             formato=dati.formato, data=dati.data, squadra_a=list(dati.squadra_a), squadra_b=list(dati.squadra_b),
-            punteggi=dati.punteggi, confermata=True, inserita_da=operatore_id, dirigenza=True,
+            punteggi=dati.punteggi, confermata=True, inserita_da=operatore_id, dirigenza=True, ospiti=ospiti,
             torneo=dati.torneo, note=dati.note,
         )
         await self.db.refresh(p)
-        return (await self._risposte([p], nomi_completi=True))[0]
+        return (await self.risposte([p], nomi_completi=True))[0]
 
     async def risolvi(self, partita_id: UUID, esito: str, operatore_id: UUID | None) -> None:
         p = await self._partita_per_update(partita_id)
@@ -454,13 +556,16 @@ class PickleballService:
         await self.db.flush()
         if esito == "conferma" or era_confermata:
             await self.ricalcola(p.formato)
+            if p.torneo_id:
+                from modules.pickleball.tornei import TorneiService
+                await TorneiService(self.db).calcola_piazzamenti(p.torneo_id)
 
     async def lista_dirigenza(self, stato: str | None = None, limite: int = 200) -> list[PartitaResponse]:
         q = select(PartitaPickleball).order_by(PartitaPickleball.data.desc(), PartitaPickleball.created_at.desc())
         if stato:
             q = q.where(PartitaPickleball.stato == stato)
         partite = (await self.db.execute(q.limit(limite))).scalars().all()
-        return await self._risposte(list(partite), nomi_completi=True)
+        return await self.risposte(list(partite), nomi_completi=True)
 
     async def cerca_giocatori_dirigenza(self, q: str) -> list[GiocatoreRicerca]:
         termine = f"%{q.strip()}%"
@@ -474,10 +579,24 @@ class PickleballService:
             .order_by(Socio.cognome, Socio.nome)
             .limit(10)
         )
-        return [
+        out = [
             GiocatoreRicerca(socio_id=s.id, nome=f"{s.nome} {s.cognome}", rating_singolo=None, rating_doppio=None)
             for s in r.scalars().all()
         ]
+        r = await self.db.execute(
+            select(GiocatoreOspite)
+            .where(
+                (func.concat(GiocatoreOspite.nome, " ", GiocatoreOspite.cognome).ilike(termine))
+                | (func.concat(GiocatoreOspite.cognome, " ", GiocatoreOspite.nome).ilike(termine))
+            )
+            .order_by(GiocatoreOspite.cognome, GiocatoreOspite.nome)
+            .limit(5)
+        )
+        out += [
+            GiocatoreRicerca(socio_id=o.id, ospite=True, nome=nome_ospite(o, True), rating_singolo=None, rating_doppio=None)
+            for o in r.scalars().all()
+        ]
+        return out
 
     async def dashboard_dirigenza(self) -> DashboardPickleballDirigenza:
         oggi = date.today()

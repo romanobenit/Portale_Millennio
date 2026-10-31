@@ -49,11 +49,18 @@ def test_doppio_usa_la_media_e_aggiorna_entrambi():
     assert v["b1"][1] - v["b1"][0] == pytest.approx(-12)
 
 
+def test_peso_torneo_moltiplica_la_variazione():
+    amichevole = applica_partita({}, ["a"], ["b"], "a")
+    torneo = applica_partita({}, ["a"], ["b"], "a", peso=1.5)
+    assert torneo["a"][1] - torneo["a"][0] == pytest.approx(1.5 * (amichevole["a"][1] - amichevole["a"][0]))
+
+
 @pytest.mark.parametrize("punteggi,vincitore", [
     ([[11, 7]], "a"),
     ([[9, 11], [11, 5], [11, 9]], "a"),
     ([[13, 15], [8, 11]], "b"),
     ([[21, 19]], "a"),
+    ([[3, 15]], "b"),
 ])
 def test_punteggi_validi(punteggi, vincitore):
     assert vincitore_da_punteggi(punteggi) == vincitore

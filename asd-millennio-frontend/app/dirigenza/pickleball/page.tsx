@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { SceltaGiocatore } from "@/components/pickleball/SceltaGiocatore";
-import { TabellaClassifica } from "@/components/pickleball/TabellaClassifica";
+import { ClassificheClub } from "@/components/pickleball/ClassificheClub";
+import { ConfigPanel } from "@/components/pickleball/dirigenza/ConfigPanel";
+import { OspitiPanel } from "@/components/pickleball/dirigenza/OspitiPanel";
+import { TorneiPanel } from "@/components/pickleball/dirigenza/TorneiPanel";
 import {
   cercaGiocatoriDirigenza,
-  fetchClassificaCompleta,
   fetchDashboardPickleball,
   fetchPartiteDirigenza,
   formattaData,
@@ -20,7 +22,6 @@ import {
   type Formato,
   type GiocatoreRicerca,
   type Partita,
-  type RigaClassifica,
   type StatoPartita,
 } from "@/lib/api/pickleball";
 
@@ -151,11 +152,10 @@ function FormRisultato({ onFatto }: { onFatto: () => void }) {
   );
 }
 
-export default function DirigenzaPickleballPage() {
+function Panoramica() {
   const [dash, setDash] = useState<DashboardPickleball | null>(null);
   const [daRisolvere, setDaRisolvere] = useState<Partita[]>([]);
-  const [formato, setFormato] = useState<Formato>("doppio");
-  const [classifica, setClassifica] = useState<RigaClassifica[]>([]);
+  const [versione, setVersione] = useState(0); // ricarica le classifiche dopo un'azione
   const [filtroStato, setFiltroStato] = useState<StatoPartita | "tutte">("confermata");
   const [storico, setStorico] = useState<Partita[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
@@ -176,9 +176,7 @@ export default function DirigenzaPickleballPage() {
     }
   }, []);
 
-  const caricaClassifica = useCallback(async () => {
-    setClassifica(await fetchClassificaCompleta(formato).catch(() => []));
-  }, [formato]);
+  const caricaClassifica = useCallback(async () => setVersione((v) => v + 1), []);
 
   const caricaStorico = useCallback(async () => {
     setStorico(await fetchPartiteDirigenza(filtroStato === "tutte" ? undefined : filtroStato).catch(() => []));
@@ -187,9 +185,6 @@ export default function DirigenzaPickleballPage() {
   useEffect(() => {
     carica();
   }, [carica]);
-  useEffect(() => {
-    caricaClassifica();
-  }, [caricaClassifica]);
   useEffect(() => {
     caricaStorico();
   }, [caricaStorico]);
@@ -216,14 +211,6 @@ export default function DirigenzaPickleballPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Pickleball</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Risultati, classifiche Elo del club e partite da verificare. Qui i nomi sono completi e compaiono anche
-          i minori e chi ha scelto di non comparire nella classifica dei soci.
-        </p>
-      </div>
-
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           ["Giocatori attivi (30 gg)", dash.giocatori_attivi_30gg],
@@ -264,9 +251,9 @@ export default function DirigenzaPickleballPage() {
               <li key={p.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
                   <p>
-                    <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomiSquadra(p, "a")}</span>
+                    <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomiSquadra(p, "a") || "—"}</span>
                     <span className="mx-1.5 text-gray-400">vs</span>
-                    <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomiSquadra(p, "b")}</span>
+                    <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomiSquadra(p, "b") || "—"}</span>
                     <span className={clsx("ml-2 rounded px-1.5 py-0.5 text-xs", ETICHETTA_STATO[p.stato].classes)}>
                       {ETICHETTA_STATO[p.stato].label}
                     </span>
@@ -293,13 +280,8 @@ export default function DirigenzaPickleballPage() {
       <FormRisultato onFatto={ricarica} />
 
       <div className={card}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-gray-900">Classifica completa</h2>
-          <Toggle valori={["doppio", "singolo"] as Formato[]} valore={formato} onChange={setFormato} />
-        </div>
-        <div className="mt-3">
-          <TabellaClassifica righe={classifica} />
-        </div>
+        <h2 className="mb-3 font-semibold text-gray-900">Classifiche complete</h2>
+        <ClassificheClub key={versione} completa />
       </div>
 
       <div className={card}>
@@ -320,9 +302,9 @@ export default function DirigenzaPickleballPage() {
               <li key={p.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
                   <p>
-                    <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomiSquadra(p, "a")}</span>
+                    <span className={clsx(p.vincitore === "a" && "font-semibold")}>{nomiSquadra(p, "a") || "—"}</span>
                     <span className="mx-1.5 text-gray-400">vs</span>
-                    <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomiSquadra(p, "b")}</span>
+                    <span className={clsx(p.vincitore === "b" && "font-semibold")}>{nomiSquadra(p, "b") || "—"}</span>
                     <span className={clsx("ml-2 rounded px-1.5 py-0.5 text-xs", ETICHETTA_STATO[p.stato].classes)}>
                       {ETICHETTA_STATO[p.stato].label}
                     </span>
@@ -343,6 +325,42 @@ export default function DirigenzaPickleballPage() {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+type Scheda = "panoramica" | "tornei" | "ospiti" | "impostazioni";
+const SCHEDE: [Scheda, string][] = [
+  ["panoramica", "Panoramica"],
+  ["tornei", "Tornei"],
+  ["ospiti", "Ospiti"],
+  ["impostazioni", "Impostazioni"],
+];
+
+export default function DirigenzaPickleballPage() {
+  const [scheda, setScheda] = useState<Scheda>("panoramica");
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Pickleball</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Risultati, tornei, classifiche Elo e circuito. Qui i nomi sono completi e compaiono anche i minori, gli
+          ospiti e chi ha scelto di non comparire nelle classifiche dei soci.
+        </p>
+      </div>
+      <nav className="flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="Sezioni pickleball">
+        {SCHEDE.map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setScheda(k)}
+            className={clsx("whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium",
+              scheda === k ? "border-blue-700 text-blue-800" : "border-transparent text-gray-500 hover:text-gray-800")}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {scheda === "panoramica" && <Panoramica />}
+      {scheda === "tornei" && <TorneiPanel />}
+      {scheda === "ospiti" && <OspitiPanel />}
+      {scheda === "impostazioni" && <ConfigPanel />}
     </div>
   );
 }

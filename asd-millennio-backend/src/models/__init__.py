@@ -4,7 +4,17 @@ from models.documento_socio import DocumentoSocio
 from models.evento import EventoCampo, ListaAttesaEvento, PrenotazioneEvento
 from models.pagamento_tessera import PagamentoTessera
 from models.credito import MovimentoCredito
-from models.pickleball import GiocatorePartita, PartitaPickleball, ProfiloAtleta, RatingPickleball
+from models.pickleball import (
+    ConfigPickleball,
+    GiocatoreOspite,
+    GiocatorePartita,
+    PartitaPickleball,
+    PiazzamentoTorneo,
+    ProfiloAtleta,
+    RatingOspite,
+    RatingPickleball,
+    TorneoPickleball,
+)
 from models.pricing_rule import PricingRule
 from models.quota_tessera import QuotaTessera
 from models.slot_calendario import SlotCalendario
@@ -33,7 +43,12 @@ __all__ = [
     "ListaAttesaEvento",
     "TesseraEsterna",
     "PartitaPickleball",
+    "ConfigPickleball",
+    "GiocatoreOspite",
     "GiocatorePartita",
+    "PiazzamentoTorneo",
+    "RatingOspite",
+    "TorneoPickleball",
     "MovimentoCredito",
     "RatingPickleball",
     "ProfiloAtleta",
