@@ -6,6 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { ContatorePresenze } from "@/components/eventi/ContatorePresenze";
+import { Locandina } from "@/components/eventi/Locandina";
 import {
   annullaPrenotazioneEvento,
   esciListaAttesa,
@@ -251,13 +252,18 @@ export default function PrenotaEventiPage() {
               return (
                 <div key={ev.id} className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold capitalize text-gray-900">{formattaDataEvento(ev.data)}</p>
-                      <p className="text-sm text-gray-600">
-                        {formattaOra(ev.ora_inizio)}–{formattaOra(ev.ora_fine)} · {etichettaSport(ev.sport)}
-                      </p>
-                      {ev.titolo && <p className="text-sm text-gray-500">{ev.titolo}</p>}
-                      <p className="mt-1 text-sm font-semibold text-gray-800">Ingresso {formattaPrezzo(ev.prezzo_eur)}</p>
+                    <div className="flex min-w-0 gap-3">
+                      {ev.locandina_url && (
+                        <Locandina url={ev.locandina_url} titolo={ev.titolo} className="h-24 w-16 rounded-md" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold capitalize text-gray-900">{formattaDataEvento(ev.data)}</p>
+                        <p className="text-sm text-gray-600">
+                          {formattaOra(ev.ora_inizio)}–{formattaOra(ev.ora_fine)} · {etichettaSport(ev.sport)}
+                        </p>
+                        {ev.titolo && <p className="text-sm text-gray-500">{ev.titolo}</p>}
+                        <p className="mt-1 text-sm font-semibold text-gray-800">Ingresso {formattaPrezzo(ev.prezzo_eur)}</p>
+                      </div>
                     </div>
                     <ContatorePresenze
                       partecipanti={ev.partecipanti}

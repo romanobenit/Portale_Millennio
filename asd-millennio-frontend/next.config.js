@@ -42,7 +42,8 @@ const nextConfig = {
               // NOTA: la URL dell'API deve terminare con "/" per CSP prefix-match (W3C spec).
               // Senza trailing slash, CSP fa exact-match e blocca tutti i sottopath.
               `connect-src 'self' ${process.env.NEXT_PUBLIC_KEYCLOAK_URL || ""} ${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/?$/, "/")}`,
-              "img-src 'self' data: https://gateway.pinata.cloud https://ipfs.io",
+              // API: locandine degli eventi (stessa origine in produzione, porta diversa in locale)
+              `img-src 'self' data: https://gateway.pinata.cloud https://ipfs.io ${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/?$/, "/")}`,
               // Stripe JS
               "script-src 'self' 'unsafe-inline' https://js.stripe.com",
               // facebook.com: Page Plugin (feed social), caricato solo dopo consenso utente

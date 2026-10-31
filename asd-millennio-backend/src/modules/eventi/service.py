@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.logger import logger
-from models.evento import EventoCampo, ListaAttesaEvento, PrenotazioneEvento
+from models.evento import EventoCampo, ListaAttesaEvento, LocandinaEvento, PrenotazioneEvento
 from models.socio import Socio
 from models.tessera import Tessera
 from models.tessera_esterna import TesseraEsterna
 from modules.credito.service import CreditoService
 from modules.eventi import email as eventi_email
+from modules.eventi.locandina import prepara_locandina
 from schemas.eventi import (
     EventoCreate,
     EventoDettaglioResponse,
@@ -144,6 +145,9 @@ class EventiService:
             in_lista_attesa=c["attesa"],
             completo=liberi == 0,
             stato=ev.stato,
+            locandina_url=(
+                f"/eventi/{ev.id}/locandina?v={int(ev.locandina_at.timestamp())}" if ev.locandina_at else None
+            ),
         )
 
     def _pubblico(self, ev: EventoCampo, c: dict) -> EventoPubblicoResponse:
@@ -687,6 +691,37 @@ class EventiService:
         await self.db.refresh(ev)
         await self._notifica_posto_libero(ev)
         return self._dirigenza(ev, (await self._conteggi([ev.id]))[ev.id])
+
+    async def imposta_locandina(self, evento_id: UUID, contenuto: bytes) -> EventoDirigenzaResponse:
+        ev = await self._evento_per_update(evento_id)
+        try:
+            jpeg, larghezza, altezza = await asyncio.to_thread(prepara_locandina, contenuto)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        await self.db.merge(
+            LocandinaEvento(
+                evento_id=ev.id, contenuto=jpeg, content_type="image/jpeg", larghezza=larghezza, altezza=altezza
+            )
+        )
+        ev.locandina_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        await self.db.refresh(ev)
+        logger.info("Locandina caricata per l'evento %s (%dx%d)", ev.id, larghezza, altezza)
+        return self._dirigenza(ev, (await self._conteggi([ev.id]))[ev.id])
+
+    async def rimuovi_locandina(self, evento_id: UUID) -> EventoDirigenzaResponse:
+        ev = await self._evento_per_update(evento_id)
+        await self.db.execute(delete(LocandinaEvento).where(LocandinaEvento.evento_id == ev.id))
+        ev.locandina_at = None
+        await self.db.flush()
+        await self.db.refresh(ev)
+        return self._dirigenza(ev, (await self._conteggi([ev.id]))[ev.id])
+
+    async def locandina(self, evento_id: UUID) -> LocandinaEvento:
+        loc = await self.db.get(LocandinaEvento, evento_id)
+        if not loc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Locandina non trovata")
+        return loc
 
     async def annulla_evento(self, evento_id: UUID) -> EventoDirigenzaResponse:
         ev = await self._evento_per_update(evento_id)

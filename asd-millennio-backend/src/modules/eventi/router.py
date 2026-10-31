@@ -1,13 +1,14 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security import RequireDirigenza, RequireStaff, get_current_user
 from models.socio import Socio
+from modules.eventi.locandina import MAX_BYTES as LOCANDINA_MAX_BYTES
 from modules.eventi.service import EventiService
 from schemas.eventi import (
     AggiungiPartecipanteRequest,
@@ -45,6 +46,17 @@ async def _socio_corrente(user: dict, db: AsyncSession) -> Socio:
 async def prossimi_eventi(db: AsyncSession = Depends(get_db, scope="function")):
     """Pubblico: eventi programmati non ancora conclusi, dal più vicino."""
     return await EventiService(db).lista_pubblica()
+
+
+@router.get("/{evento_id}/locandina", include_in_schema=False)
+async def locandina_evento(evento_id: UUID, db: AsyncSession = Depends(get_db, scope="function")):
+    """Pubblico: immagine della locandina. L'URL contiene la versione, quindi è cacheabile a lungo."""
+    loc = await EventiService(db).locandina(evento_id)
+    return Response(
+        content=loc.contenuto,
+        media_type=loc.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/mie", response_model=MieiEventiResponse)
@@ -138,6 +150,22 @@ async def aggiorna_evento(
     evento_id: UUID, data: EventoUpdate, _=RequireDirigenza, db: AsyncSession = Depends(get_db, scope="function")
 ):
     return await EventiService(db).aggiorna_evento(evento_id, data)
+
+
+@dirigenza_router.put("/{evento_id}/locandina", response_model=EventoDirigenzaResponse)
+async def carica_locandina(
+    evento_id: UUID,
+    file: UploadFile = File(...),
+    _=RequireDirigenza,
+    db: AsyncSession = Depends(get_db, scope="function"),
+):
+    contenuto = await file.read(LOCANDINA_MAX_BYTES + 1)
+    return await EventiService(db).imposta_locandina(evento_id, contenuto)
+
+
+@dirigenza_router.delete("/{evento_id}/locandina", response_model=EventoDirigenzaResponse)
+async def rimuovi_locandina(evento_id: UUID, _=RequireDirigenza, db: AsyncSession = Depends(get_db, scope="function")):
+    return await EventiService(db).rimuovi_locandina(evento_id)
 
 
 @dirigenza_router.post("/{evento_id}/annulla", response_model=EventoDirigenzaResponse)

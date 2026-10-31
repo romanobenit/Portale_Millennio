@@ -487,6 +487,10 @@ nel database solo per lo storico (nessun modello ORM le usa più).
 - Annullamento di un evento da parte della dirigenza → rimborso di tutti gli online (Stripe, o in credito per
   chi ha pagato col credito) + email ai partecipanti.
 - Home pubblica: evento più vicino in evidenza + elenco dei successivi, ciascuno col contatore.
+- **Locandina** facoltativa per evento (dirigenza: `PUT|DELETE /dirigenza/eventi/{id}/locandina`): JPG/PNG/WebP
+  fino a 8 MB, sempre ricompressa in JPEG (max 1600 px, senza EXIF) e salvata in `locandine_evento`. Servita
+  pubblicamente da `GET /eventi/{id}/locandina?v=…` (URL versionato, cache lunga); compare in home e in
+  `/dashboard/prenotazioni`.
 
 **Endpoint:** `GET /eventi` (pubblico), `GET /eventi/mie`, `POST /eventi/{id}/prenota`,
 `POST /eventi/prenotazioni/{id}/annulla`, `POST|DELETE /eventi/{id}/lista-attesa`;
@@ -1076,4 +1080,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Ottobre 2026 — ASD Millennio Team Dev — v2.6 (tornei pickleball, ospiti, circuito)*
+*Ultima modifica: Novembre 2026 — ASD Millennio Team Dev — v2.7 (locandine eventi)*

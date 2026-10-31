@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { ContatorePresenze } from "@/components/eventi/ContatorePresenze";
+import { Locandina } from "@/components/eventi/Locandina";
 import {
   aggiornaEvento,
   aggiungiPartecipante,
   annullaEvento,
   azzeraAssenze,
+  caricaLocandina,
   cercaSoci,
   creaEvento,
   etichettaSport,
@@ -20,6 +22,7 @@ import {
   formattaPrezzo,
   impostaPresenzeManuali,
   motivoNonPrenotabile,
+  rimuoviLocandina,
   segnaPrenotazione,
   type EventoDettaglio,
   type EventoDirigenza,
@@ -297,6 +300,13 @@ export default function EventiDirigenzaPage() {
                   <p className="mt-1 text-xs text-gray-500">
                     Online {ev.confermati_online} · In sede {ev.confermati_in_sede} · Manuali {ev.presenze_manuali}
                   </p>
+                  {ev.stato === "programmato" ? (
+                    <GestioneLocandina ev={ev} onCambio={carica} />
+                  ) : (
+                    ev.locandina_url && (
+                      <Locandina url={ev.locandina_url} titolo={ev.titolo} className="mt-3 h-24 w-16 rounded-md" />
+                    )
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <ContatorePresenze
@@ -334,6 +344,59 @@ export default function EventiDirigenzaPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Locandina mostrata in home e nella pagina prenotazioni dei soci. */
+function GestioneLocandina({ ev, onCambio }: { ev: EventoDirigenza; onCambio: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const esegui = async (azione: () => Promise<unknown>, ok: string) => {
+    setBusy(true);
+    try {
+      await azione();
+      toast.success(ok);
+      onCambio();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Operazione non riuscita");
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-3">
+      {ev.locandina_url && <Locandina url={ev.locandina_url} titolo={ev.titolo} className="h-24 w-16 rounded-md" />}
+      <div className="flex flex-col items-start gap-1">
+        <input
+          ref={input}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) esegui(() => caricaLocandina(ev.id, file), "Locandina pubblicata");
+          }}
+        />
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className={btnSecondario}>
+          {busy ? "Caricamento…" : ev.locandina_url ? "Cambia locandina" : "Aggiungi locandina"}
+        </button>
+        {ev.locandina_url ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => window.confirm("Togliere la locandina?") && esegui(() => rimuoviLocandina(ev.id), "Locandina rimossa")}
+            className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+          >
+            Togli
+          </button>
+        ) : (
+          <span className="text-xs text-gray-500">JPG, PNG o WebP · compare in home e nelle prenotazioni</span>
+        )}
+      </div>
     </div>
   );
 }
