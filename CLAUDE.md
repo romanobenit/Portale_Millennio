@@ -486,7 +486,8 @@ nel database solo per lo storico (nessun modello ORM le usa più).
   l'email va a **tutta** la lista e il posto va a chi conferma per primo.
 - Annullamento di un evento da parte della dirigenza → rimborso di tutti gli online (Stripe, o in credito per
   chi ha pagato col credito) + email ai partecipanti.
-- Home pubblica: evento più vicino in evidenza + elenco dei successivi, ciascuno col contatore.
+- Home pubblica e pagina `/eventi`: un evento in evidenza (il primo con la locandina, cioè sponsorizzato;
+  altrimenti il più vicino) + elenco degli altri, ciascuno col contatore.
 - **Locandina** facoltativa per evento (dirigenza: `PUT|DELETE /dirigenza/eventi/{id}/locandina`): JPG/PNG/WebP
   fino a 8 MB, sempre ricompressa in JPEG (max 1600 px, senza EXIF) e salvata in `locandine_evento`. Servita
   pubblicamente da `GET /eventi/{id}/locandina?v=…` (URL versionato, cache lunga); compare in home e in

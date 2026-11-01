@@ -15,7 +15,10 @@ import {
   type EventoPubblico,
 } from "@/lib/api/eventi";
 
-/** Home: evento più vicino in evidenza + elenco degli altri eventi programmati. */
+/**
+ * Home e pagina Eventi: un evento in evidenza + elenco degli altri eventi programmati.
+ * In evidenza va il primo evento con la locandina (sponsorizzato), altrimenti il più vicino.
+ */
 export function ProssimiEventi() {
   const [eventi, setEventi] = useState<EventoPubblico[] | null>(null);
   const [errore, setErrore] = useState(false);
@@ -26,7 +29,9 @@ export function ProssimiEventi() {
       .catch(() => setErrore(true));
   }, []);
 
-  const [primo, ...altri] = eventi ?? [];
+  const lista = eventi ?? [];
+  const primo = lista.find((ev) => ev.locandina_url) ?? lista[0];
+  const altri = lista.filter((ev) => ev !== primo);
 
   return (
     <Section id="eventi" muted>
@@ -50,11 +55,19 @@ export function ProssimiEventi() {
         {primo && (
           <article className="mx-auto flex max-w-3xl flex-col overflow-hidden rounded-2xl bg-gradient-to-br from-accent-500 to-brand-600 text-white shadow-lg sm:flex-row">
             {primo.locandina_url && (
-              <Locandina url={primo.locandina_url} titolo={primo.titolo} intera className="bg-black/20 sm:w-64" />
+              <Locandina url={primo.locandina_url} titolo={primo.titolo} intera className="bg-black/20 sm:w-80" />
             )}
-            <div className="flex flex-1 flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+            <div
+              className={
+                primo.locandina_url
+                  ? "flex flex-1 flex-col justify-end gap-6 p-6 sm:p-8"
+                  : "flex flex-1 flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8"
+              }
+            >
               <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-white/80">Il prossimo evento</p>
+                <p className="text-sm font-semibold uppercase tracking-wider text-white/80">
+                  {primo.locandina_url ? "In evidenza" : "Il prossimo evento"}
+                </p>
                 <h3 className="mt-2 font-display text-2xl font-bold capitalize sm:text-3xl">
                   {formattaDataEvento(primo.data)}
                 </h3>
@@ -64,7 +77,7 @@ export function ProssimiEventi() {
                 {primo.titolo && <p className="mt-1 text-white/90">{primo.titolo}</p>}
                 <p className="mt-3 text-sm text-white/90">Ingresso {formattaPrezzo(primo.prezzo_eur)}</p>
               </div>
-              <div className="flex flex-col gap-4 sm:items-end">
+              <div className={primo.locandina_url ? "flex flex-col gap-4" : "flex flex-col gap-4 sm:items-end"}>
                 <ContatorePresenze
                   partecipanti={primo.partecipanti}
                   postiMax={primo.posti_max}
