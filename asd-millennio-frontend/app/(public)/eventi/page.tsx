@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/site/PageHeader";
 import { Section } from "@/components/site/Section";
 import { Reveal } from "@/components/site/Reveal";
 import { Cta } from "@/components/site/home/Cta";
+import { ProssimiEventi } from "@/components/site/home/ProssimiEventi";
 import { eventi } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -20,6 +21,8 @@ export default function EventiPage() {
         title="Eventi e tornei"
         subtitle="Gli appuntamenti che animano la nostra comunità sportiva."
       />
+
+      <ProssimiEventi />
 
       <Section>
         <ul className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
