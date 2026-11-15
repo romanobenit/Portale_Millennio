@@ -111,6 +111,14 @@
       "clientRole" : false,
       "containerId" : "fafc0bf4-bff6-43ae-9c6c-c41a3f44d5c1",
       "attributes" : { }
+    }, {
+      "id" : "5d3f8a2e-7c41-4b9e-a6d0-2f1e8c9b7a40",
+      "name" : "tracker",
+      "description" : "Tracker iscritti: inserisce e aggiorna i contatti (senza i poteri dello staff)",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fafc0bf4-bff6-43ae-9c6c-c41a3f44d5c1",
+      "attributes" : { }
     } ],
     "client" : {
       "realm-management" : [ {

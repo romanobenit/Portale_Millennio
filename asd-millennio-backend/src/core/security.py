@@ -94,3 +94,5 @@ RequireSocio = Depends(require_roles("socio", "staff", "dirigenza", "allenatore"
 RequireStaff = Depends(require_roles("staff", "dirigenza"))
 RequireDirigenza = Depends(require_roles("dirigenza"))
 RequireAllenatore = Depends(require_roles("allenatore", "staff", "dirigenza"))
+# Tracker iscritti: chi inserisce i contatti (ruolo dedicato, senza i poteri dello staff) e la dirigenza
+RequireTracker = Depends(require_roles("tracker", "dirigenza"))

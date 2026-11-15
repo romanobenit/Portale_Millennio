@@ -502,6 +502,15 @@ aggiunta partecipante in sede, ricerca soci, azzeramento assenze).
 (solo maggiorenni) + tessera **attiva e già verificata** in un'unica transazione; consensi registrati come
 `testo_versione='v1-cartaceo'`. Il pagamento della quota in sede non viene ancora registrato a sistema.
 
+**Gestione tesseramenti (dirigenza)** (`modules/soci/gestione_tesseramenti.py`, `GET|PATCH|DELETE
+/dirigenza/tesseramenti/{tessera_id}`; UI: «Modifica» nella tabella di Tesseramenti): correzione della tessera
+(categoria → nuovo numero tessera, mai da/verso `community`; stato attiva/sospesa/scaduta; scadenza; certificato
+medico tipo + scadenza insieme) e dell'anagrafica del socio (nome/cognome ripuliti dagli spazi doppi, CF col
+checksum e unico, data di nascita solo per maggiorenni e senza renderli minorenni, telefono, indirizzo; **email no**,
+è quella dell'accesso). **Eliminazione** solo di tessere senza pagamenti online registrati (pagato, rimborsato,
+erogazione liberale): quelle si sospendono; i checkout mai completati spariscono con la tessera. Il socio resta in
+anagrafica (per cancellarlo c'è la procedura GDPR). Nei log solo id e nomi dei campi.
+
 **Importazione tesserati da file** (`POST /soci/tesseramento-in-sede/import`, staff/dirigenza; UI in
 Tesseramenti → «Importa da file»): CSV con una categoria per file (no `community`, che richiede la tessera
 esterna). Parser in `modules/soci/import_tesserati.py`: accetta il CSV di Excel (`;` o `,`, UTF-8/BOM o
@@ -579,6 +588,27 @@ scope community social, moneta della community, trasferimenti fra soci e preliev
 - Pagine: `/dashboard/credito` (saldo, movimenti, ricarica) e `/dirigenza/credito` (totale in circolo,
   ultimi 30 giorni, ricerca socio, ricariche in sede/accrediti/storni). Endpoint `/credito/{me,ricarica}` e
   `/dirigenza/credito/{riepilogo,soci,soci/{id},soci/{id}/movimenti}` (solo `dirigenza`).
+
+**Tracker iscritti** (`modules/tracker/`, tabelle `contatti_tracker`, `contatti_tracker_stati`,
+`membri_tracker`, `costi_istruttore`; brief di Ivano, Novembre 2026): quale sport e quale fonte portano iscritti paganti.
+- Un **contatto** per persona (data, sport, fonte, nome, canale, recapito, stato, data prova, abbonamento, importo,
+  responsabile e prossimo follow-up, note). Sport, fonte, canale, stato e abbonamento sono **tendine chiuse** (enum):
+  gli sport del tracker (Wushu/Kung Fu, Pallavolo, Badminton, Pickleball, Tornei Pickleball, Turno basket serale,
+  Calcio a 5) sono distinti dalle categorie di tessera.
+- **Storico degli stati**: i conteggi usano le fasi raggiunte (un "pagato" resta fra lead e prove, un "perso" resta
+  nelle fasi a cui era arrivato). Regole pure in `modules/tracker/regole.py`. Conversione = paganti ÷ lead;
+  **incassato** (paganti) e **impegnato** (iscritti non ancora paganti) separati.
+- **Costo istruttore** mensile per sport con variazioni nel tempo (dirigenza); nella vista per sport costo × mesi del
+  periodo e margine. Nella vista per fonte (Meta Ads) il costo non compare.
+- Ruoli: realm role Keycloak **`tracker`** (chi inserisce, es. Rita: solo `/dirigenza/tracker`, senza i poteri dello
+  staff) e `dirigenza`. Responsabili del follow-up = chi ha già usato il tracker (`membri_tracker`, registrati al primo
+  accesso). Riepiloghi, costi e cancellazione solo dirigenza.
+- **Nessuna cancellazione** (si passa a "perso"), salvo **richiesta di rimozione** dell'interessato
+  (`DELETE /tracker/contatti/{id}`, dirigenza): riga e storico spariscono davvero. Righe di prova con `is_test`, fuori
+  dai conteggi reali. Niente dati di salute nelle note (avviso nell'interfaccia). **Pulizia manuale dei "perso"** (dirigenza,
+  `POST /tracker/persi/cancella`: anteprima del numero, poi conferma): cancella i contatti passati a "perso" entro
+  una data, con il loro storico; nessuna cancellazione automatica per ora.
+- Endpoint `/tracker/{me,membri,contatti,contatti/doppioni,contatti/{id},follow-up,riepilogo,costi-istruttore}`.
 
 ---
 
@@ -1081,4 +1111,4 @@ hardhat.config.js
 
 ---
 
-*Ultima modifica: Novembre 2026 — ASD Millennio Team Dev — v2.7 (locandine eventi)*
+*Ultima modifica: Novembre 2026 — ASD Millennio Team Dev — v2.8 (tracker iscritti)*

@@ -226,6 +226,67 @@ export async function fetchTesserati(filtri?: {
   return data;
 }
 
+// ── gestione tesseramenti (dirigenza) ────────────────────────────────────────
+
+export interface TesseramentoDettaglio {
+  tessera_id: string;
+  numero_tessera: string;
+  categoria: string;
+  stato: string;
+  anno_sportivo: string | null;
+  data_emissione: string | null;
+  data_scadenza: string | null;
+  verifica_stato: string | null;
+  certificato_medico_tipo: "non_agonistico" | "agonistico" | null;
+  certificato_medico_scadenza: string | null;
+  socio_id: string;
+  nome: string;
+  cognome: string;
+  codice_fiscale: string;
+  data_nascita: string;
+  email: string;
+  telefono: string | null;
+  indirizzo: string | null;
+  is_minor: boolean;
+  altre_tessere: number;
+  pagamenti: { importo_eur: string; stato: string; created_at: string }[];
+  eliminabile: boolean;
+  motivo_non_eliminabile: string | null;
+}
+
+export interface ModificaTesseramento {
+  tessera?: {
+    categoria?: string;
+    stato?: "attiva" | "sospesa" | "scaduta";
+    data_scadenza?: string | null;
+    certificato_medico_tipo?: "non_agonistico" | "agonistico" | null;
+    certificato_medico_scadenza?: string | null;
+  };
+  socio?: {
+    nome?: string;
+    cognome?: string;
+    codice_fiscale?: string;
+    data_nascita?: string;
+    telefono?: string | null;
+    indirizzo?: string | null;
+  };
+}
+
+export async function fetchTesseramento(tesseraId: string): Promise<TesseramentoDettaglio> {
+  const { data } = await apiClient.get<TesseramentoDettaglio>(`/dirigenza/tesseramenti/${tesseraId}`);
+  return data;
+}
+
+export async function modificaTesseramento(tesseraId: string, modifica: ModificaTesseramento): Promise<TesseramentoDettaglio> {
+  const { data } = await apiClient.patch<TesseramentoDettaglio>(`/dirigenza/tesseramenti/${tesseraId}`, modifica);
+  return data;
+}
+
+/** Solo per tessere senza pagamenti online registrati (altrimenti il server risponde 409). */
+export async function eliminaTesseramento(tesseraId: string): Promise<void> {
+  await apiClient.delete(`/dirigenza/tesseramenti/${tesseraId}`);
+}
+
 export interface TesseramentoInSedeInput {
   socio_id?: string;
   anagrafica?: {

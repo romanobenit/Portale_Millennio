@@ -43,6 +43,11 @@ export function isDirigenza(keycloak: Keycloak): boolean {
   return hasRole(keycloak, "dirigenza");
 }
 
+/** Tracker iscritti: chi inserisce i contatti (ruolo dedicato) e la dirigenza. */
+export function isTracker(keycloak: Keycloak): boolean {
+  return hasRole(keycloak, "tracker") || hasRole(keycloak, "dirigenza");
+}
+
 export function isSocio(keycloak: Keycloak): boolean {
   return (
     hasRole(keycloak, "socio") ||
