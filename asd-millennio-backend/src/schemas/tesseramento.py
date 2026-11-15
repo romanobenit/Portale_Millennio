@@ -1,4 +1,6 @@
 from datetime import date, datetime
+from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -251,3 +253,61 @@ class QuotaResponse(BaseModel):
     note: str | None
 
     model_config = {"from_attributes": True}
+
+
+# ── gestione tesseramenti (dirigenza) ─────────────────────────────────────────
+
+class ModificaTesseraDati(BaseModel):
+    """Campi della tessera correggibili dalla dirigenza (solo quelli inviati)."""
+    categoria: str | None = None            # cambia anche il numero tessera (nuovo prefisso)
+    stato: Literal["attiva", "sospesa", "scaduta"] | None = None
+    data_scadenza: date | None = None
+    certificato_medico_tipo: Literal["non_agonistico", "agonistico"] | None = None
+    certificato_medico_scadenza: date | None = None
+
+
+class ModificaSocioDati(BaseModel):
+    """Anagrafica correggibile dalla dirigenza. L'email no: è quella dell'accesso."""
+    nome: str | None = Field(None, min_length=1, max_length=80)
+    cognome: str | None = Field(None, min_length=1, max_length=80)
+    codice_fiscale: str | None = Field(None, min_length=16, max_length=16)
+    data_nascita: date | None = None
+    telefono: str | None = Field(None, max_length=30)
+    indirizzo: str | None = Field(None, max_length=200)
+
+
+class ModificaTesseramentoRequest(BaseModel):
+    tessera: ModificaTesseraDati | None = None
+    socio: ModificaSocioDati | None = None
+
+
+class PagamentoTesseraBreve(BaseModel):
+    importo_eur: Decimal
+    stato: str
+    created_at: datetime
+
+
+class TesseramentoDettaglioResponse(BaseModel):
+    tessera_id: UUID
+    numero_tessera: str
+    categoria: str
+    stato: str
+    anno_sportivo: str | None
+    data_emissione: date | None
+    data_scadenza: date | None
+    verifica_stato: str | None
+    certificato_medico_tipo: str | None
+    certificato_medico_scadenza: date | None
+    socio_id: UUID
+    nome: str
+    cognome: str
+    codice_fiscale: str
+    data_nascita: date
+    email: str
+    telefono: str | None
+    indirizzo: str | None
+    is_minor: bool
+    altre_tessere: int                      # altre tessere dello stesso socio
+    pagamenti: list[PagamentoTesseraBreve]
+    eliminabile: bool
+    motivo_non_eliminabile: str | None

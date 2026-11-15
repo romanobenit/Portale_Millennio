@@ -2,13 +2,14 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { getKeycloak, initKeycloakOnce, isDirigenza } from "@/lib/auth/keycloak";
+import { usePathname, useRouter } from "next/navigation";
+import { getKeycloak, initKeycloakOnce, isDirigenza, isTracker } from "@/lib/auth/keycloak";
 import { setAuthToken } from "@/lib/api/client";
 
 /**
  * Layout dell'area /dirigenza:
  *  1. gate di autenticazione (inizializza Keycloak + verifica ruolo dirigenza);
+ *     chi ha solo il ruolo `tracker` (es. chi inserisce i contatti) vede solo il tracker iscritti;
  *  2. chrome condivisa (header + sidebar) per TUTTE le pagine dirigenza,
  *     così ognuna ha navigazione e ritorno all'area soci / sito pubblico.
  */
@@ -75,6 +76,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: "/dirigenza/tracker",
+    label: "Tracker iscritti",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
+  {
     href: "/dirigenza/tesseramenti",
     label: "Tesseramenti",
     icon: (
@@ -110,7 +121,9 @@ function LiveDot() {
 
 export default function DirigenzaLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [stato, setStato] = useState<"loading" | "ok" | "negato">("loading");
+  const [soloTracker, setSoloTracker] = useState(false);
   const [ora, setOra] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -144,13 +157,26 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
             .then((refreshed) => { if (refreshed && kc.token) setAuthToken(kc.token); })
             .catch(() => kc.login());
         };
-        setStato(isDirigenza(kc) ? "ok" : "negato");
+        if (isDirigenza(kc)) {
+          setStato("ok");
+        } else if (isTracker(kc)) {
+          setSoloTracker(true);
+          setStato("ok");
+        } else {
+          setStato("negato");
+        }
       })
       .catch((err) => {
         console.error("Keycloak init error (dirigenza):", err);
         setStato("negato");
       });
   }, []);
+
+  const fuoriDalTracker = soloTracker && !pathname.startsWith("/dirigenza/tracker");
+  useEffect(() => {
+    if (fuoriDalTracker) router.replace("/dirigenza/tracker");
+  }, [fuoriDalTracker, router]);
+  const navItems = soloTracker ? NAV_ITEMS.filter((i) => i.href === "/dirigenza/tracker") : NAV_ITEMS;
 
   useEffect(() => {
     const tick = () => setOra(new Date().toLocaleTimeString("it-IT"));
@@ -168,7 +194,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
     }`;
   };
 
-  if (stato === "loading") {
+  if (stato === "loading" || fuoriDalTracker) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -208,7 +234,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
           </div>
           <span className="font-bold text-gray-900 truncate">ASD Millennio</span>
           <span className="text-gray-300 hidden sm:inline">·</span>
-          <span className="text-sm text-gray-500 hidden sm:inline">Area dirigenza</span>
+          <span className="text-sm text-gray-500 hidden sm:inline">{soloTracker ? "Tracker iscritti" : "Area dirigenza"}</span>
         </div>
         <div className="flex items-center gap-3 md:gap-4 text-sm">
           <LiveDot />
@@ -242,7 +268,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
           aria-label="Area dirigenza (mobile)"
           className="md:hidden absolute inset-x-0 top-full h-[calc(100dvh-100%)] overflow-y-auto border-t border-gray-200 bg-white p-4 space-y-1 shadow-lg"
         >
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <Link key={item.href} href={item.href} className={navItemClass(item.href)}>
               {item.icon}
               {item.label}
@@ -264,7 +290,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
         {/* ── Sidebar ───────────────────────────────────────────────────── */}
         <aside className="hidden md:block w-52 shrink-0 bg-white border-r border-gray-200 min-h-[calc(100vh-57px)] pt-6 pb-4 px-3">
           <nav className="space-y-1">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link key={item.href} href={item.href} className={navItemClass(item.href)}>
                 {item.icon}
                 {item.label}
@@ -272,6 +298,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
             ))}
           </nav>
 
+          {!soloTracker && (
           <div className="mt-8 px-3">
             <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-2">Periodo vendita</p>
             <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
@@ -280,6 +307,7 @@ export default function DirigenzaLayout({ children }: { children: ReactNode }) {
               <div className="flex justify-between"><span>Anni</span><span className="font-mono font-medium">16</span></div>
             </div>
           </div>
+          )}
         </aside>
 
         {/* ── Contenuto (le pagine dirigenza) ───────────────────────────── */}

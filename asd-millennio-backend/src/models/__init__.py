@@ -21,10 +21,15 @@ from models.slot_calendario import SlotCalendario
 from models.socio import Socio
 from models.tessera import Tessera
 from models.tessera_esterna import TesseraEsterna
+from models.tracker import ContattoTracker, CostoIstruttore, MembroTracker, StatoContattoStorico
 from models.wallet import WalletCustodiale
 from models.webhook_log import WebhookLog
 
 __all__ = [
+    "ContattoTracker",
+    "CostoIstruttore",
+    "MembroTracker",
+    "StatoContattoStorico",
     "Socio",
     "Tessera",
     "Consenso",

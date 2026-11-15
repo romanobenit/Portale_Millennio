@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchVerifiche, confermaVerifica, rifiutaVerifica, scaricaDocumento,
   fetchTesserati, esitoTesseraEsterna,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/tesseramento";
 import { TesseramentoInSede } from "@/components/soci/TesseramentoInSede";
 import { ImportaTesserati } from "@/components/soci/ImportaTesserati";
+import { GestioneTessera } from "@/components/soci/GestioneTessera";
 import toast from "react-hot-toast";
 
 const CAT_LABEL: Record<string, string> = {
@@ -62,6 +63,8 @@ export default function VerificheTesseramentiPage() {
   const [filtroCertificato, setFiltroCertificato] = useState<"" | StatoCertificato>("");
   const [mostraInSede, setMostraInSede] = useState(false);
   const [mostraImport, setMostraImport] = useState(false);
+  const [gestita, setGestita] = useState<string | null>(null);   // tessera aperta in modifica
+  const chiudiGestione = useCallback(() => setGestita(null), []);
 
   const carica = async () => {
     try { setItems(await fetchVerifiche()); }
@@ -286,12 +289,13 @@ export default function VerificheTesseramentiPage() {
                   <th className="px-4 py-3">Scadenza</th>
                   <th className="px-4 py-3">Stato</th>
                   <th className="px-4 py-3">Certificato medico</th>
+                  <th className="px-4 py-3"><span className="sr-only">Azioni</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {tesseratiFiltrati.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                       Nessun tesserato trovato
                     </td>
                   </tr>
@@ -338,6 +342,12 @@ export default function VerificheTesseramentiPage() {
                           <p className="text-xs text-gray-500 mt-0.5">{t.certificato_medico_scadenza}</p>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <button onClick={() => setGestita(t.tessera_id)}
+                          className="text-sm font-medium text-blue-700 hover:underline">
+                          Modifica
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -346,6 +356,8 @@ export default function VerificheTesseramentiPage() {
           </div>
         )}
       </div>
+
+      {gestita && <GestioneTessera tesseraId={gestita} onChiudi={chiudiGestione} onCambiato={caricaTesserati} />}
     </div>
   );
 }
