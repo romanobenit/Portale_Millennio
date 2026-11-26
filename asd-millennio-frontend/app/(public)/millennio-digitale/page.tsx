@@ -233,7 +233,7 @@ export default function MillennioDigitalePage() {
 
       {/* In aula */}
       <Section id="in-aula" muted>
-        <SectionHeading eyebrow="In aula" title="I nostri laboratori" />
+        <SectionHeading eyebrow="In aula" title="Coderdojo – IC Aldo Moro" />
         <div className="mt-12 grid gap-6 md:grid-cols-2">
           <Reveal>
             <Foto
