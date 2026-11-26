@@ -3,7 +3,7 @@ import { siteConfig, discipline } from "@/lib/site";
 
 /**
  * Sitemap del sito pubblico. Cresce man mano che vengono aggiunte le pagine
- * negli step successivi (Chi siamo, Attività, Corsi, Eventi, News, Contatti).
+ * negli step successivi (Chi siamo, Attività, Corsi, Eventi, Millennio Digitale, Contatti).
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteConfig.url.replace(/\/$/, "");
@@ -14,7 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...discipline.map((d) => `/attivita/${d.slug}`),
     "/corsi",
     "/eventi",
-    "/news",
+    "/millennio-digitale",
     "/contatti",
   ]; // aggiornato a ogni nuova pagina pubblica
   const now = new Date();

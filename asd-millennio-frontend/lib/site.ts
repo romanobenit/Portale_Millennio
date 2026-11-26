@@ -44,7 +44,7 @@ export const mainNav: NavItem[] = [
   { href: "/attivita", label: "Attività" },
   { href: "/corsi", label: "Corsi" },
   { href: "/eventi", label: "Eventi" },
-  { href: "/news", label: "Notizie" },
+  { href: "/millennio-digitale", label: "Millennio Digitale" },
   { href: "/contatti", label: "Contatti" },
 ];
 
@@ -237,16 +237,6 @@ export const comeIscriversi = [
 ];
 
 // ─── News ────────────────────────────────────────────────────────────────────
-
-export interface NewsItem {
-  slug: string;
-  titolo: string;
-  data: string; // ISO
-  estratto: string;
-}
-
-/** Notizie/comunicazioni. Vuoto finché non vengono forniti contenuti. */
-export const news: NewsItem[] = [];
 
 // ─── Gallery ─────────────────────────────────────────────────────────────────
 

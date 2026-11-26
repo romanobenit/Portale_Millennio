@@ -12,6 +12,10 @@ const nextConfig = {
       { protocol: "https", hostname: "ipfs.io" },
     ],
   },
+  async redirects() {
+    // La pagina "Notizie" è stata sostituita da "Millennio Digitale".
+    return [{ source: "/news", destination: "/millennio-digitale", permanent: true }];
+  },
   async headers() {
     const isDev = process.env.NODE_ENV !== "production";
     return [
